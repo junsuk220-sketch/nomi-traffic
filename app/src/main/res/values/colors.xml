@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ink">#12263A</color>
+    <color name="ink_soft">#3A4A5C</color>
+    <color name="amber">#E8A838</color>
+    <color name="paper">#F4F1EA</color>
+    <color name="card">#FFFFFF</color>
+    <color name="muted">#6B645C</color>
+    <color name="stroke">#E4DED4</color>
+    <color name="chip_naver_bg">#E5F7EC</color>
+    <color name="chip_naver_fg">#0B7A3B</color>
+    <color name="chip_google_bg">#E8F0FE</color>
+    <color name="chip_google_fg">#1967D2</color>
+    <color name="dot_idle">#D9D3C8</color>
+    <color name="dot_done">#C9A24A</color>
+</resources>

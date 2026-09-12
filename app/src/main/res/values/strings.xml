@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">교통음성알림</string>
+    <string name="brand_name">교통음성알림</string>
+    <string name="app_feature">네이버·구글 안내를 음성으로</string>
+    <string name="home_hint">🔊 교통음성알림입니다.\n평소처럼 네이버 지도나 구글 지도를 사용하시면 됩니다.\n그럼 교통정보를 제가 음성으로 알려드릴게요.</string>
+    <string name="first_voice_speech">교통음성알림입니다.\n평소처럼 네이버 지도나 구글 지도를 사용하시면 됩니다.\n그럼 교통정보를 제가 음성으로 알려드릴게요.</string>
+    <string name="home_empty">아직 안내를 시작한 경로가 없어요.</string>
+    <string name="naver_nav_listener_label">네이버 교통 알림</string>
+    <string name="google_transit_a11y_label">교통음성알림 구글 교통</string>
+    <string name="google_transit_a11y_desc">구글 지도 대중교통 화면에 보이는 버스 번호·남은 시간과 환승 통과 안내만 읽습니다. 다른 앱은 보지 않습니다.</string>
+    <string name="naver_subway_a11y_label">교통음성알림 네이버 교통</string>
+    <string name="naver_subway_a11y_desc">네이버 지도 화면에 보이는 지하철 빠른 하차·빠른 환승 칸 번호만 읽습니다. 다른 앱은 보지 않습니다.</string>
+    <string name="onboarding_allow">허용</string>
+    <string name="onboarding_step_progress">%1$d / %2$d 단계</string>
+    <string name="onboarding_naver_notify_title">네이버 알림 접근</string>
+    <string name="onboarding_naver_notify_desc">네이버 버스 도착을 음성으로 알려 주려면 필요해요.\n알림 접근에서 「네이버 교통 알림」을 켜 주세요.</string>
+    <string name="onboarding_google_a11y_title">교통음성알림 구글 교통</string>
+    <string name="onboarding_google_a11y_desc">구글 지도 안내를 음성으로 알려 주려면 필요해요.\n접근성에서 「설치된 앱」을 누르고, 「교통음성알림 구글 교통」을 켠 뒤 교통음성알림으로 돌아오세요.</string>
+    <string name="onboarding_naver_subway_title">교통음성알림 네이버 교통</string>
+    <string name="onboarding_naver_subway_desc">빠른 하차·환승 칸을 알려 주려면 필요해요.\n접근성에서 「설치된 앱」을 누르고, 「교통음성알림 네이버 교통」을 켠 뒤 교통음성알림으로 돌아오세요.</string>
+    <string name="route_card_open_failed">지도를 열 수 없어요.</string>
+    <string name="a11y_off_action">2개 켜기</string>
+    <string name="onboarding_a11y_title">2개를 켜 주세요</string>
+    <string name="onboarding_a11y_desc">「설치된 앱」에서 아래 2개를 모두 켠 뒤 여기로 돌아오세요.</string>
+    <string name="onboarding_a11y_image_caption">이곳으로 들어가면 2개가 있어요</string>
+    <string name="onboarding_a11y_image_desc">접근성 설정의 설치된 앱 항목</string>
+</resources>
