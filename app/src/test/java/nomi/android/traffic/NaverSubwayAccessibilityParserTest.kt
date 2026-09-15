@@ -178,7 +178,7 @@ class NaverSubwayAccessibilityParserTest {
             ),
         )
         assertEquals(
-            "11번 버스가 6분 후 도착해요. 다음 버스는 11번, 13분 후 도착입니다.",
+            "11번, 11번 버스가 6분 후 도착해요. 다음은 11번, 13분 후 도착입니다.",
             NavigationEventSpeech.line(bus!!),
         )
     }

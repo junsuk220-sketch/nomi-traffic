@@ -308,6 +308,10 @@ class NavigationEventSpeaker(
                             endSpeakHold()
                         }
                     }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        onError(utteranceId)
+                    }
                 })
                 engineReady = true
                 tts = engine

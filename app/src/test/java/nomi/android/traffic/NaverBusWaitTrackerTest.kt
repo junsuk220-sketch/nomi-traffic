@@ -1,19 +1,31 @@
 package nomi.android.traffic
 
 import nomi.android.traffic.buswait.BusWaitCore
+import nomi.android.traffic.buswait.BusWaitFieldTrace
 import nomi.android.traffic.buswait.BusWaitSilence
 import nomi.product.nav.NavigationBusArrival
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 /**
  * Sheet-ownership adapter around [nomi.android.traffic.buswait.BusWaitCore].
  * Pin/track/stage constitution tests live in BusWaitCoreTest.
  */
 class NaverBusWaitTrackerTest {
+
+    @get:Rule
+    val tmp = TemporaryFolder()
+
+    @Before
+    fun attachTrace() {
+        BusWaitFieldTrace.resetForTest(tmp.root)
+    }
 
     @Test
     fun `without seed notification yields no target`() {
@@ -134,6 +146,50 @@ class NaverBusWaitTrackerTest {
         tracker.leave()
         assertTrue(tracker.pinnedBusLines().isEmpty())
         assertNull(tracker.onNotification(listOf(bus("81", "2분")))!!.target)
+    }
+
+    @Test
+    fun `sheet trace keeps arrival order and source`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("15")
+        tracker.onSheet(
+            listOf(bus("15", "2분"), bus("15", "16분"), bus("66", "20분")),
+            nowMs = 1_000L,
+        )
+        val line = BusWaitFieldTrace.file().readText()
+        assertTrue(line.contains("\"src\":\"sheet\""))
+        val seen = line.indexOf("\"seen\":")
+        assertTrue(line.indexOf("\"15\",\"eta\":\"2분\"", seen) < line.indexOf("\"15\",\"eta\":\"16분\"", seen))
+        assertTrue(line.indexOf("\"15\",\"eta\":\"16분\"", seen) < line.indexOf("\"66\",\"eta\":\"20분\"", seen))
+    }
+
+    @Test
+    fun `notification trace keeps stop`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("15")
+        tracker.onNotification(
+            listOf(bus("15", "5분")),
+            stop = "일산동부경찰서(중)",
+            nowMs = 1_000L,
+        )
+        val line = BusWaitFieldTrace.file().readText()
+        assertTrue(line.contains("\"src\":\"notification\""))
+        assertTrue(line.contains("일산동부경찰서(중)"))
+    }
+
+    @Test
+    fun `other-stop skip does not write a core path`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("81")
+        tracker.onNotification(listOf(bus("81", "5분")), stop = "라페스타.먹자골목", nowMs = 1_000L)
+        BusWaitFieldTrace.resetForTest(tmp.root)
+        val stale = tracker.onNotification(
+            listOf(bus("67", "곧 도착")),
+            stop = "일산동부경찰서(중)",
+            nowMs = 2_000L,
+        )
+        assertNull(stale)
+        assertFalse(BusWaitFieldTrace.file().exists() && BusWaitFieldTrace.file().length() > 0)
     }
 
     @Test

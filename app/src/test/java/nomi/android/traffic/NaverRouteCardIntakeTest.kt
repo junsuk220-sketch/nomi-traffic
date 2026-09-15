@@ -100,5 +100,70 @@ class NaverRouteCardIntakeTest {
         assertEquals(20L, cards[0].lastUsedAtMillis)
     }
 
+    @Test
+    fun `notification until-move daehwa creates a card`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(
+            302,
+            20L,
+            listOf("대화역 3호선까지 이동", "길안내를 시작합니다"),
+        )
+        val cards = repo.recent()
+        assertEquals(1, cards.size)
+        assertEquals(NavigationEventSource.NAVER, cards[0].provider)
+        assertEquals("대화역", cards[0].destinationName)
+        assertEquals(RouteCardMode.TRANSIT, cards[0].mode)
+        assertEquals(20L, cards[0].lastUsedAtMillis)
+    }
+
+    @Test
+    fun `notification until-move wonheung creates a card`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(302, 20L, listOf("원흥역 3호선까지 이동"))
+        assertEquals(listOf("원흥역"), repo.recent().map { it.destinationName })
+    }
+
+    @Test
+    fun `walk-to-stop 302 does not create a destination card`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(
+            302,
+            20L,
+            listOf("일산동부경찰서(중)까지 걷기", "150 (곧 도착), 2000 (3분)"),
+        )
+        assertTrue(repo.recent().isEmpty())
+    }
+
+    @Test
+    fun `subway walk-to-stop 302 does not create a destination card`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(302, 20L, listOf("정발산역 3호선까지 걷기", "오금행 (16:29)"))
+        assertTrue(repo.recent().isEmpty())
+    }
+
+    @Test
+    fun `plain 302 without destination pattern does not create a card`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(302, 20L, listOf("길안내를 시작합니다", "98 (곧 도착), 67 (2분)"))
+        assertTrue(repo.recent().isEmpty())
+    }
+
+    @Test
+    fun `until-walk mixed with until-move still uses final destination`() {
+        val repo = repo()
+        val naver = NaverRouteCardIntake(repo)
+        naver.onNotificationPosted(
+            301,
+            20L,
+            listOf("일산동부경찰서(중)까지 걷기", "대화역 3호선까지 이동"),
+        )
+        assertEquals(listOf("대화역"), repo.recent().map { it.destinationName })
+    }
+
     private fun repo() = RouteCardRepository(InMemoryRouteCardStore())
 }

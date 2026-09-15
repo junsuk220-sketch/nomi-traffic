@@ -174,7 +174,7 @@ class NaverTripStartParserTest {
         assertEquals("7분", event.busInfo!!.arrivals[0].eta)
         assertEquals(6, event.distanceMeters)
         assertEquals(
-            "81번 버스가 7분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
+            "81번, 81번 버스가 7분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
             NavigationEventSpeech.line(event),
         )
         val gate = NavigationEventSpeechGate()
@@ -182,7 +182,7 @@ class NaverTripStartParserTest {
     }
 
     @Test
-    fun `trip start next bus is same stop cluster not the next 98`() {
+    fun `trip start next bus is remaining soonest after first not 2000`() {
         val chips = listOf("89", "67", "66", "98", "2000", "150", "97", "83")
         val decision = NaverTripStartParser.decision(
             packageName = NaverMapNotification.PACKAGE,
@@ -213,9 +213,10 @@ class NaverTripStartParserTest {
         )
         val event = (decision as NaverTripStartParser.Decision.Speak).event
         assertEquals("98", event.busInfo!!.arrivals[0].line)
-        assertEquals("2000", event.busInfo!!.arrivals[1].line)
+        assertEquals("89", event.busInfo!!.arrivals[1].line)
+        assertEquals("2분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "98번 버스, 곧 도착합니다. 정류장까지는 걸어서 약 8분입니다. 다음 버스는 2000번, 3분 후 도착입니다.",
+            "98번, 98번 버스, 곧 도착합니다. 정류장까지는 걸어서 약 8분입니다. 다음은 89번, 2분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -243,7 +244,7 @@ class NaverTripStartParserTest {
         assertEquals("150", event.busInfo!!.arrivals[0].line)
         assertEquals("67", event.busInfo!!.arrivals[1].line)
         assertEquals(
-            "150번 버스가 3분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다. 다음 버스는 67번, 5분 후 도착입니다.",
+            "150번, 150번 버스가 3분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다. 다음은 67번, 5분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -317,7 +318,7 @@ class NaverTripStartParserTest {
         assertEquals("97", event.busInfo!!.arrivals[0].line)
         assertEquals("곧 도착", event.busInfo!!.arrivals[0].eta)
         assertEquals(
-            "97번 버스, 곧 도착합니다.",
+            "97번, 97번 버스, 곧 도착합니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -347,7 +348,7 @@ class NaverTripStartParserTest {
         assertEquals("88B", event.busInfo!!.arrivals[1].line)
         assertEquals("9분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "88B번 버스가 2분 후 도착합니다. 다음 버스는 88B번, 9분 후 도착입니다.",
+            "88B번, 88B번 버스가 2분 후 도착합니다. 다음은 88B번, 9분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -379,7 +380,7 @@ class NaverTripStartParserTest {
         assertEquals("88B", event.busInfo!!.arrivals[1].line)
         assertEquals("11분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "88B번 버스가 5분 후 도착합니다. 정류장까지는 걸어서 약 5분입니다. 다음 버스는 88B번, 11분 후 도착입니다.",
+            "88B번, 88B번 버스가 5분 후 도착합니다. 정류장까지는 걸어서 약 5분입니다. 다음은 88B번, 11분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }

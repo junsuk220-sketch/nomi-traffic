@@ -97,6 +97,18 @@ class BusWaitSilenceTest {
     }
 
     @Test
+    fun `bounce switch back to six after soon is already spoken`() {
+        val core = BusWaitCore()
+        core.seed("88B")
+        core.observe(listOf(bus("88B", "곧 도착"), bus("88B", "7분")), 1_000L)
+        core.observe(listOf(bus("88B", "6분"), bus("88B", "18분")), 4_000L)
+        core.observe(listOf(bus("88B", "곧 도착"), bus("88B", "7분")), 15_000L)
+        val bounce = core.observe(listOf(bus("88B", "6분"), bus("88B", "18분")), 15_050L)!!
+        assertNull(bounce.speakStage)
+        assertEquals(BusWaitSilence.STAGE_ALREADY, bounce.silence)
+    }
+
+    @Test
     fun `after cooldown consumed the stage the next same stage is already spoken`() {
         val core = BusWaitCore()
         core.seed("81")

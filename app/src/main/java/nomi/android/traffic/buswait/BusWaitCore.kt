@@ -20,6 +20,8 @@ class BusWaitCore {
         val speakStage: Int?,
         /** Set only when [speakStage] is null. Adapter skips never invent this. */
         val silence: BusWaitSilence? = null,
+        /** Existing observe() branch name. Diagnostic only. */
+        val path: BusWaitTracePath? = null,
     )
 
     private var pinned: Set<String> = emptySet()
@@ -32,6 +34,8 @@ class BusWaitCore {
     private var pendingSinceMs = 0L
     private var lastObservedAtMs = 0L
     private var lastSpokenAtMs: Long? = null
+    /** ETA of [tracked] before the last change. Speech-only: bounce switch must not reset stages. */
+    private var etaBeforeTracked: String? = null
     private val stages = mutableSetOf<Int>()
 
     fun pinnedLines(): Set<String> = pinned
@@ -54,6 +58,7 @@ class BusWaitCore {
         soonSeenAtMs = null
         pendingEta = null
         lastSpokenAtMs = null
+        etaBeforeTracked = null
         stages.clear()
     }
 
@@ -74,6 +79,7 @@ class BusWaitCore {
         soonSeenAtMs = null
         pendingEta = null
         lastSpokenAtMs = null
+        etaBeforeTracked = null
         stages.clear()
     }
 
@@ -98,6 +104,7 @@ class BusWaitCore {
                 switched = false,
                 speakStage = null,
                 silence = BusWaitSilence.NO_PINNED_ROWS,
+                path = BusWaitTracePath.HOLD_NO_PINNED_ROWS,
             )
         }
         val soonest = soonest(scoped) ?: return Tick(
@@ -105,11 +112,18 @@ class BusWaitCore {
             switched = false,
             speakStage = null,
             silence = BusWaitSilence.NO_CANDIDATE,
+            path = BusWaitTracePath.NO_CANDIDATE,
         )
         val previous = tracked?.takeIf { it.line in pinned }
         if (previous == null) {
             trackReading(soonest, nowMs)
-            return tick(soonest, switched = false, nowMs = nowMs, eta = soonest.eta)
+            return tick(
+                soonest,
+                switched = false,
+                nowMs = nowMs,
+                eta = soonest.eta,
+                path = BusWaitTracePath.INITIAL,
+            )
         }
         val trackedIsOnScreen = scoped.any { it.line == previous.line }
         if (trackedIsOnScreen) {
@@ -121,6 +135,7 @@ class BusWaitCore {
                 switched = false,
                 speakStage = null,
                 silence = BusWaitSilence.ABSENT_HOLD,
+                path = BusWaitTracePath.HOLD_ABSENT,
             )
         }
         val onTrackedLine = soonest(scoped.filter { it.line == previous.line })
@@ -131,29 +146,52 @@ class BusWaitCore {
                 switched = false,
                 speakStage = null,
                 silence = BusWaitSilence.UNSETTLED_FEED,
+                path = BusWaitTracePath.HOLD_UNSETTLED,
             )
         }
         val sameAsPrevious = findSame(previous, scoped)
         if (sameAsPrevious != null) {
             if (soonest.line != previous.line && isClearlyFaster(soonest, previous)) {
-                return switchTo(soonest, nowMs)
+                return switchTo(soonest, nowMs, BusWaitTracePath.FASTER_ALTERNATE)
             }
             val merged = carrySheetFields(previous, sameAsPrevious)
             trackReading(merged, nowMs)
-            return tick(merged, switched = false, nowMs = nowMs, eta = merged.eta)
+            return tick(
+                merged,
+                switched = false,
+                nowMs = nowMs,
+                eta = merged.eta,
+                path = BusWaitTracePath.KEEP_SAME,
+            )
         }
         val next = if (soonest.line == previous.line) {
             carrySheetFields(previous, soonest)
         } else {
             soonest
         }
-        return switchTo(next, nowMs)
+        return switchTo(next, nowMs, BusWaitTracePath.NO_SAME_VEHICLE)
     }
 
-    private fun switchTo(next: NavigationBusArrival, nowMs: Long): Tick {
+    private fun switchTo(
+        next: NavigationBusArrival,
+        nowMs: Long,
+        path: BusWaitTracePath,
+    ): Tick {
+        val bounce = isSpeechBounce(next, nowMs)
         trackReading(next, nowMs)
-        stages.clear()
-        return tick(next, switched = true, nowMs = nowMs, eta = next.eta)
+        if (!bounce) stages.clear()
+        return tick(next, switched = true, nowMs = nowMs, eta = next.eta, path = path)
+    }
+
+    /**
+     * 302 and the sheet can flip 곧 ↔ 6분 of the same line. Tracking still
+     * switches ([isSameVehicle] is unchanged). Speech must not reset stages
+     * when the new ETA is the one we just left, or the 120s ladder speaks again.
+     */
+    private fun isSpeechBounce(next: NavigationBusArrival, nowMs: Long): Boolean {
+        val last = lastSpokenAtMs ?: return false
+        if (nowMs - last >= STAGE_COOLDOWN_MS) return false
+        return etaBeforeTracked != null && next.eta == etaBeforeTracked
     }
 
     private fun tick(
@@ -161,13 +199,18 @@ class BusWaitCore {
         switched: Boolean,
         nowMs: Long,
         eta: String,
+        path: BusWaitTracePath,
     ): Tick {
         val spoken = gatedStage(eta, nowMs, switched)
-        return Tick(target, switched, spoken.stage, spoken.silence)
+        return Tick(target, switched, spoken.stage, spoken.silence, path)
     }
 
     private fun trackReading(arrival: NavigationBusArrival, nowMs: Long) {
-        if (tracked?.eta != arrival.eta) trackedEtaAtMs = nowMs
+        val previous = tracked
+        if (previous != null && previous.eta != arrival.eta) {
+            etaBeforeTracked = previous.eta
+            trackedEtaAtMs = nowMs
+        }
         tracked = arrival
         trackedSeenAtMs = nowMs
         pendingEta = null

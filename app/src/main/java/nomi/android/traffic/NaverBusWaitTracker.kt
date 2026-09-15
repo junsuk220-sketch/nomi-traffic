@@ -1,6 +1,7 @@
 package nomi.android.traffic
 
 import nomi.android.traffic.buswait.BusWaitCore
+import nomi.android.traffic.buswait.BusWaitFieldTrace
 import nomi.android.traffic.buswait.BusWaitSilence
 import nomi.product.nav.NavigationBusArrival
 
@@ -85,11 +86,11 @@ class NaverBusWaitTracker(
         nowMs: Long = System.currentTimeMillis(),
     ): Snapshot = synchronized(lock) {
         if (arrivals.isEmpty()) {
-            return toSnapshot(core.observe(arrivals, nowMs))
+            return observeAndTrace(arrivals, nowMs, source = "sheet", stop = null)
         }
         sheetOwns = true
         lastSheetAtMs = nowMs
-        toSnapshot(core.observe(arrivals, nowMs))
+        observeAndTrace(arrivals, nowMs, source = "sheet", stop = null)
     }
 
     /**
@@ -104,7 +105,7 @@ class NaverBusWaitTracker(
         if (arrivals.isEmpty()) return@synchronized null
         if (!acceptsBoard(arrivals, stop)) return@synchronized null
         sheetOwns = false
-        toSnapshot(core.observe(arrivals, nowMs))
+        observeAndTrace(arrivals, nowMs, source = "notification", stop = stop)
     }
 
     fun noteSpoken(nowMs: Long = System.currentTimeMillis()) {
@@ -154,6 +155,33 @@ class NaverBusWaitTracker(
             boardStop = null
             boardStopLocked = false
         }
+    }
+
+    private fun observeAndTrace(
+        arrivals: List<NavigationBusArrival>,
+        nowMs: Long,
+        source: String,
+        stop: String?,
+    ): Snapshot {
+        val prev = lastTarget
+        val tick = core.observe(arrivals, nowMs)
+        BusWaitFieldTrace.record(
+            nowMs = nowMs,
+            source = source,
+            stop = stop,
+            pinned = core.pinnedLines(),
+            seeded = core.seededLines(),
+            prevLine = prev?.line,
+            prevEta = prev?.eta,
+            arrivals = arrivals,
+            targetLine = tick?.target?.line,
+            targetEta = tick?.target?.eta,
+            switched = tick?.switched ?: false,
+            speakStage = tick?.speakStage,
+            silence = tick?.silence,
+            path = tick?.path,
+        )
+        return toSnapshot(tick)
     }
 
     private fun toSnapshot(tick: BusWaitCore.Tick?): Snapshot {

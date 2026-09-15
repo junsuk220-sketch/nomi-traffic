@@ -37,7 +37,17 @@ class NaverRouteCardIntake(
         return recordFromNotification(waiting, pendingAtMillis.takeIf { it > 0L } ?: atMillis)
     }
 
-    fun onNotificationPosted(notificationId: Int, atMillis: Long): RouteCard? {
+    fun onNotificationPosted(
+        notificationId: Int,
+        atMillis: Long,
+        destinationBlobs: List<String?> = emptyList(),
+    ): RouteCard? {
+        val dest = NaverTransitDestinationParser.destination(
+            destinationBlobs.mapNotNull { it?.trim()?.ifEmpty { null } },
+        )
+        if (dest != null) {
+            onScreen(destinationLabel = dest, liveGuidance = false, atMillis = atMillis)
+        }
         if (notificationId in recordedIds) return null
         if (snapshot == null) {
             pendingId = notificationId

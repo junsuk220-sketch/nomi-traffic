@@ -1,6 +1,7 @@
 package nomi.android.traffic
 
 import android.accessibilityservice.AccessibilityService
+import android.os.PowerManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -24,16 +25,31 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         if (event == null) return
         val pkg = event.packageName?.toString() ?: return
         if (pkg != NaverMapNotification.PACKAGE) return
+        val interactive = getSystemService(PowerManager::class.java)?.isInteractive != false
+        NaverRideObservationLog.recordA11yEvent(
+            ts = System.currentTimeMillis(),
+            pkg = pkg,
+            interactive = interactive,
+            a11yType = NaverRideObservationLog.typeName(event.eventType),
+            className = event.className?.toString(),
+            text = event.text?.joinToString(", ") { it?.toString().orEmpty() },
+            contentDescription = event.contentDescription?.toString(),
+            viewId = clickViewId(event),
+            skipDedup = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+        )
+        val diagSeq = NaverTripStartDiag.nextSeq()
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val texts = event.text?.joinToString("") ?: ""
             val desc = event.contentDescription?.toString().orEmpty()
-            if (NaverTripStartParser.isStartButton(texts) ||
+            val startClick = NaverTripStartParser.isStartButton(texts) ||
                 NaverTripStartParser.isStartButton(desc) ||
                 texts.contains("안내시작") ||
                 desc.contains("안내시작")
-            ) {
+            NaverTripStartDiag.logClick(diagSeq, event, texts, desc, startClick)
+            if (startClick) {
                 NaverTripStartSession.restartFromClick(System.currentTimeMillis())
                 NavigationEventVoice.resetNaverTripStart()
+                NaverTripStartDiag.onSessionClockReset()
                 Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] start button armed")
                 NavigationEventVoice.pinNaverFromTripCache()
             }
@@ -50,12 +66,20 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] end button, guidance ended")
             }
         }
-        val root = rootInActiveWindow ?: return
+        if (getSystemService(PowerManager::class.java)?.isInteractive == false) return
+        val root = rootInActiveWindow
+        if (root == null) {
+            NaverTripStartDiag.logNoRoot(diagSeq, event, System.currentTimeMillis())
+            return
+        }
         try {
-            if (root.packageName?.toString() != NaverMapNotification.PACKAGE) return
             val tree = collect(root)
             val now = System.currentTimeMillis()
             val live = NaverTransitDestinationParser.isLiveGuidance(tree)
+            val windowId = root.windowId.toLong()
+            val hasStartButton = flattenBlobs(tree).any { NaverTripStartParser.isStartButton(it) }
+            NaverTripStartDiag.logTree(diagSeq, event, now, root, live, hasStartButton)
+            if (root.packageName?.toString() != NaverMapNotification.PACKAGE) return
             if (!live) {
                 when (
                     val preview = NaverTripStartParser.decision(
@@ -71,14 +95,24 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     }
                     NaverTripStartParser.Decision.Pending -> Unit
                 }
-                if (NaverTripStartSession.noteNotLive(now)) {
+                if (NaverTripStartDiag.consumeNotLiveBegin()) {
+                    NaverTripStartDiag.logNotLiveBegin(diagSeq, event, now, root, live)
+                }
+                if (NaverTripStartSession.noteNotLive(now, windowId)) {
+                    NaverTripStartDiag.logSessionEndTrigger(diagSeq, event, now, root, live)
                     NavigationEventVoice.resetNaverTripStart()
                     NavigationEventVoice.leaveNaverWaitSheet()
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] session ended")
                 }
+            } else {
+                NaverTripStartDiag.onLiveSeen()
+                NaverTripStartSession.noteLiveWindow(windowId)
+            }
+            if (live != wasLive) {
+                NaverTripStartDiag.logLiveState(diagSeq, wasLive, live, event, now, root, live)
             }
             if (live && !wasLive) {
-                if (NaverTripStartSession.noteLive(now)) {
+                if (NaverTripStartSession.noteLive(now, windowId)) {
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance armed")
                 } else {
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance began")
@@ -124,6 +158,12 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             }
 
             val screenBlobs = flattenBlobs(tree)
+            NaverRideObservationLog.recordA11yTree(
+                ts = now,
+                pkg = pkg,
+                live = live,
+                blobs = screenBlobs,
+            )
             screenBlobs.forEach {
                 NavigationEventVoice.noteNaverNearBoard(it)
                 NavigationEventVoice.noteNaverPrepareAlight(it)
@@ -222,11 +262,22 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        NaverRideObservationLog.attach(filesDir)
         NavigationEventVoice.prepare(this)
         Log.i(NaverMapsTransit.TAG, "service connected")
     }
 
     override fun onInterrupt() = Unit
+
+    private fun clickViewId(event: AccessibilityEvent): String? {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return null
+        val src = event.source ?: return null
+        return try {
+            src.viewIdResourceName?.takeIf { it.isNotBlank() }
+        } finally {
+            src.recycle()
+        }
+    }
 
     private fun flattenBlobs(node: NaverSubwayAccessibilityParser.Node): List<String> {
         val out = ArrayList<String>()

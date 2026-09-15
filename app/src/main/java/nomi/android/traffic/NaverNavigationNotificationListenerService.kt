@@ -2,6 +2,7 @@ package nomi.android.traffic
 
 import android.app.Notification
 import android.os.Bundle
+import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
@@ -15,6 +16,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
 
     override fun onListenerConnected() {
         Log.i(NaverMapNotification.TAG, "listener connected")
+        NaverRideObservationLog.attach(filesDir)
         NavigationEventVoice.prepare(this)
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
@@ -26,6 +28,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val channel = sbn.notification.channelId
         if (!NaverMapNotification.isWatchedChannel(channel)) return
         if (channel == NaverMapNotification.CHANNEL_WALK) {
+            recordRideObservation(sbn, channel)
             noteNearBoard(sbn)
             return
         }
@@ -41,6 +44,13 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
             NaverMapNotification.TAG,
             "[NAVER_REMOVED] id=${sbn.id} channel=$channel",
         )
+        NaverRideObservationLog.recordNotificationRemoved(
+            ts = System.currentTimeMillis(),
+            pkg = sbn.packageName,
+            interactive = getSystemService(PowerManager::class.java)?.isInteractive != false,
+            id = sbn.id,
+            channel = channel,
+        )
         RouteCardAccess.naverIntake(this).onNotificationRemoved(sbn.id)
     }
 
@@ -53,6 +63,25 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val chip = extraText(extras, NaverMapNotification.EXTRA_CHIP)
         val secondary = extraText(extras, NaverMapNotification.EXTRA_SECONDARY)
         val nowbarSecondary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_SECONDARY)
+        val primary = extraText(extras, NaverMapNotification.EXTRA_PRIMARY)
+        val chipExpandedText = chip
+        NaverRideObservationLog.recordNotification(
+            ts = System.currentTimeMillis(),
+            pkg = sbn.packageName,
+            interactive = getSystemService(PowerManager::class.java)?.isInteractive != false,
+            id = sbn.id,
+            channel = channel,
+            title = title,
+            text = text,
+            bigText = bigText,
+            nowbarPrimary = nowbarPrimary,
+            nowbarSecondary = nowbarSecondary,
+            chip = chip,
+            primary = primary,
+            secondary = secondary,
+            progress = extraProgress(extras),
+            chipExpandedText = chipExpandedText,
+        )
         Log.i(
             NaverMapNotification.TAG,
             NaverMapNotification.transitLog(
@@ -114,6 +143,14 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         RouteCardAccess.naverIntake(this).onNotificationPosted(
             notificationId = sbn.id,
             atMillis = System.currentTimeMillis(),
+            destinationBlobs = listOf(
+                title,
+                text,
+                bigText,
+                nowbarPrimary,
+                event?.action,
+                event?.rawText,
+            ),
         )
     }
 
@@ -147,6 +184,36 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val value = extras.getCharSequence(key) ?: extras.getString(key) ?: return null
         val text = value.toString()
         return text.ifBlank { null }
+    }
+
+    private fun recordRideObservation(sbn: StatusBarNotification, channel: String) {
+        val extras = sbn.notification.extras
+        val chip = extraText(extras, NaverMapNotification.EXTRA_CHIP)
+        NaverRideObservationLog.recordNotification(
+            ts = System.currentTimeMillis(),
+            pkg = sbn.packageName,
+            interactive = getSystemService(PowerManager::class.java)?.isInteractive != false,
+            id = sbn.id,
+            channel = channel,
+            title = extraText(extras, Notification.EXTRA_TITLE),
+            text = extraText(extras, Notification.EXTRA_TEXT),
+            bigText = extraText(extras, Notification.EXTRA_BIG_TEXT),
+            nowbarPrimary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_PRIMARY),
+            nowbarSecondary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_SECONDARY),
+            chip = chip,
+            primary = extraText(extras, NaverMapNotification.EXTRA_PRIMARY),
+            secondary = extraText(extras, NaverMapNotification.EXTRA_SECONDARY),
+            progress = extraProgress(extras),
+            chipExpandedText = chip,
+        )
+    }
+
+    private fun extraProgress(extras: Bundle): Int? {
+        if (extras.containsKey("android.ongoingActivityNoti.progress")) {
+            return extras.getInt("android.ongoingActivityNoti.progress")
+        }
+        if (!extras.containsKey(Notification.EXTRA_PROGRESS)) return null
+        return extras.getInt(Notification.EXTRA_PROGRESS)
     }
 
     private fun noteNearBoard(sbn: StatusBarNotification) {

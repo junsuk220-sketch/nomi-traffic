@@ -177,10 +177,7 @@ object NaverTripStartParser {
         ) ?: arrivals.first()
         val packed = listOfNotNull(
             first,
-            NaverNextVehicle.afterSoonest(
-                arrivals,
-                sameLine = kind == NaverMapsTransit.KIND_SUBWAY,
-            ),
+            NaverNextVehicle.afterSoonest(arrivals, first),
         )
         return NavigationEvent(
             source = NavigationEventSource.NAVER,

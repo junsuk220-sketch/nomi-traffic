@@ -34,7 +34,7 @@ class NaverBusAccessibilityParserTest {
         assertEquals("여유", event.busInfo!!.arrivals[0].occupancy)
         assertEquals(5, event.busInfo!!.arrivals[0].stopsRemaining)
         assertEquals(
-            "81번 버스가 5분 후 도착해요. 버스 좌석은 여유입니다. 다음 버스는 99번, 6분 후 도착입니다.",
+            "81번, 81번 버스가 5분 후 도착해요. 버스 좌석은 여유입니다. 다음은 99번, 6분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         val core = nomi.android.traffic.buswait.BusWaitCore()
@@ -67,12 +67,12 @@ class NaverBusAccessibilityParserTest {
             packageName = NaverMapNotification.PACKAGE,
             root = board("안내 중", "81", "곧", "1정류장", "여유"),
         ).single()
-        assertEquals("81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다.", NavigationEventSpeech.line(soon))
+        assertEquals("81번, 81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다.", NavigationEventSpeech.line(soon))
         val one = NaverBusAccessibilityParser.parse(
             packageName = NaverMapNotification.PACKAGE,
             root = board("안내 중", "81", "1분", "1정류장", "여유"),
         ).single()
-        assertEquals("81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다.", NavigationEventSpeech.line(one))
+        assertEquals("81번, 81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다.", NavigationEventSpeech.line(one))
         assertFalse(NavigationEventSpeechGate().accept(one))
         val core = nomi.android.traffic.buswait.BusWaitCore()
         core.seed("81")
@@ -109,7 +109,7 @@ class NaverBusAccessibilityParserTest {
         assertEquals("곧 도착", event.busInfo!!.arrivals[0].eta)
         assertEquals("여유", event.busInfo!!.arrivals[0].occupancy)
         assertEquals(
-            "81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다. 다음 버스는 99번, 곧 도착합니다.",
+            "81번, 81번 버스, 곧 도착합니다. 버스 좌석은 여유입니다. 다음은 99번, 곧 도착합니다.",
             NavigationEventSpeech.line(event),
         )
         val core = nomi.android.traffic.buswait.BusWaitCore()
@@ -154,7 +154,7 @@ class NaverBusAccessibilityParserTest {
         assertEquals("여유", event.busInfo!!.arrivals[0].occupancy)
         assertEquals("여유", event.busInfo!!.arrivals[1].occupancy)
         assertEquals(
-            "81번 버스가 10분 후 도착해요. 버스 좌석은 여유입니다. 다음 버스는 99번, 11분 후 도착입니다.",
+            "81번, 81번 버스가 10분 후 도착해요. 버스 좌석은 여유입니다. 다음은 99번, 11분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -167,7 +167,7 @@ class NaverBusAccessibilityParserTest {
         ).single()
         assertEquals("혼잡", crowded.busInfo!!.arrivals[0].occupancy)
         assertEquals(
-            "81번 버스가 2분 후 도착해요. 버스 좌석은 혼잡입니다.",
+            "81번, 81번 버스가 2분 후 도착해요. 버스 좌석은 혼잡입니다.",
             NavigationEventSpeech.line(crowded),
         )
         val bare = NaverBusAccessibilityParser.parse(
@@ -175,7 +175,7 @@ class NaverBusAccessibilityParserTest {
             root = board("안내 중", "81", "5분", "5정류장"),
         ).single()
         assertNull(bare.busInfo!!.arrivals[0].occupancy)
-        assertEquals("81번 버스가 5분 후 도착해요.", NavigationEventSpeech.line(bare))
+        assertEquals("81번, 81번 버스가 5분 후 도착해요.", NavigationEventSpeech.line(bare))
     }
 
     @Test

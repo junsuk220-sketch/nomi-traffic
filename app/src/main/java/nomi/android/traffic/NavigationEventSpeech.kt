@@ -107,12 +107,12 @@ object NavigationEventSpeech {
             }
         } else {
             when {
-                isSoonEta(first.eta) -> "${first.line}번 버스, 곧 도착합니다."
+                isSoonEta(first.eta) -> "${first.line}번, ${first.line}번 버스, 곧 도착합니다."
                 else -> {
                     val minutes = etaMinutesPattern.find(first.eta)?.groupValues?.get(1)?.toIntOrNull()
                         ?: return null
                     if (minutes < 1) return null
-                    "${first.line}번 버스가 ${minutes}분 후 도착합니다."
+                    "${first.line}번, ${first.line}번 버스가 ${minutes}분 후 도착합니다."
                 }
             }
         }
@@ -150,11 +150,11 @@ object NavigationEventSpeech {
     ): String? {
         if (isOneMinute(eta) && !oneMinuteAsSoon) return null
         val head = if (isSoonEta(eta) || (oneMinuteAsSoon && isOneMinute(eta))) {
-            "${line}번 버스, 곧 도착합니다."
+            "${line}번, ${line}번 버스, 곧 도착합니다."
         } else {
             val minutes = etaMinutesPattern.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
             if (minutes < 1) return null
-            "${line}번 버스가 ${minutes}분 후 도착해요."
+            "${line}번, ${line}번 버스가 ${minutes}분 후 도착해요."
         }
         val status = occupancy?.trim().orEmpty()
         if (status.isEmpty()) return head
@@ -177,11 +177,12 @@ object NavigationEventSpeech {
         if (event.source != NavigationEventSource.NAVER) return null
         if (!forBriefing && event.action == NaverMapsTransit.TRIP_START_ACTION) return null
         val arrivals = event.busInfo?.arrivals.orEmpty()
+        val current = arrivals.firstOrNull() ?: return null
         val subway = event.rawText == NaverMapsTransit.KIND_SUBWAY
-        val next = NaverNextVehicle.afterSoonest(arrivals, sameLine = subway) ?: return null
+        val next = NaverNextVehicle.afterSoonest(arrivals, current) ?: return null
         if (isSoonEta(next.eta)) {
             return if (subway) "다음 열차는 곧 도착합니다."
-            else "다음 버스는 ${next.line}번, 곧 도착합니다."
+            else "다음은 ${next.line}번, 곧 도착합니다."
         }
         val minutes = etaMinutesPattern.find(next.eta)?.groupValues?.get(1)?.toIntOrNull()
             ?: return null
@@ -189,7 +190,7 @@ object NavigationEventSpeech {
         return if (subway) {
             "다음 열차는 ${minutes}분 후 도착입니다."
         } else {
-            "다음 버스는 ${next.line}번, ${minutes}분 후 도착입니다."
+            "다음은 ${next.line}번, ${minutes}분 후 도착입니다."
         }
     }
 

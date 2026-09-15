@@ -86,7 +86,7 @@ class NaverTransferAccessibilityParserTest {
             timestampMillis = 0L,
         )
         assertEquals(
-            "037번 버스가 5분 후 도착해요. 버스 좌석은 여유입니다.",
+            "037번, 037번 버스가 5분 후 도착해요. 버스 좌석은 여유입니다.",
             NavigationEventSpeech.line(eta),
         )
         assertFalse(gate.accept(eta))

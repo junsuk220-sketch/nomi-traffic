@@ -73,7 +73,7 @@ class NavigationEventSpeechTest {
                 ),
             ),
         )
-        assertEquals("11번 버스가 6분 후 도착해요. 다음 버스는 11번, 13분 후 도착입니다.", line)
+        assertEquals("11번, 11번 버스가 6분 후 도착해요. 다음은 11번, 13분 후 도착입니다.", line)
     }
 
     @Test
@@ -97,7 +97,7 @@ class NavigationEventSpeechTest {
                 text = "11 (6분), 11 (13분)",
             ),
         )
-        assertEquals("11번 버스가 6분 후 도착해요. 다음 버스는 11번, 13분 후 도착입니다.", NavigationEventSpeech.line(event!!))
+        assertEquals("11번, 11번 버스가 6분 후 도착해요. 다음은 11번, 13분 후 도착입니다.", NavigationEventSpeech.line(event!!))
     }
 
     @Test
@@ -211,11 +211,11 @@ class NavigationEventSpeechTest {
     @Test
     fun `one minute speaks as soon and soon wording speaks once`() {
         assertEquals(
-            "11번 버스, 곧 도착합니다.",
+            "11번, 11번 버스, 곧 도착합니다.",
             NavigationEventSpeech.line(transitMinutes(1)),
         )
         assertEquals(
-            "11번 버스, 곧 도착합니다.",
+            "11번, 11번 버스, 곧 도착합니다.",
             NavigationEventSpeech.line(
                 transit(
                     NavigationBusInfo(
@@ -281,7 +281,7 @@ class NavigationEventSpeechTest {
             ),
         )
         assertEquals(
-            "81번 버스, 곧 도착합니다. 다음 버스는 99번, 곧 도착합니다.",
+            "81번, 81번 버스, 곧 도착합니다. 다음은 99번, 곧 도착합니다.",
             NavigationEventSpeech.line(event),
         )
         assertFalse(NavigationEventSpeechGate().accept(event))
@@ -292,7 +292,7 @@ class NavigationEventSpeechTest {
     }
 
     @Test
-    fun `walk wait names the same-cluster next bus until near the stop`() {
+    fun `walk wait names the remaining soonest next bus until near the stop`() {
         NaverNearBoardNotice.reset()
         val event = transit(
             NavigationBusInfo(
@@ -306,12 +306,12 @@ class NavigationEventSpeechTest {
             ),
         )
         assertEquals(
-            "98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음 버스는 89번, 5분 후 도착입니다.",
+            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음은 89번, 5분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         NaverNearBoardNotice.note("승차정류장 부근입니다.")
         assertEquals(
-            "98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다.",
+            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다.",
             NavigationEventSpeech.line(event),
         )
         NaverNearBoardNotice.reset()
@@ -368,7 +368,7 @@ class NavigationEventSpeechTest {
         assertEquals("98", focused.busInfo!!.arrivals[0].line)
         assertEquals("89", focused.busInfo!!.arrivals[1].line)
         assertEquals(
-            "98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음 버스는 89번, 5분 후 도착입니다.",
+            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음은 89번, 5분 후 도착입니다.",
             NavigationEventSpeech.line(focused),
         )
         NaverNearBoardNotice.reset()
@@ -377,7 +377,7 @@ class NavigationEventSpeechTest {
     @Test
     fun `occupancy is spoken after the arrival cue`() {
         assertEquals(
-            "81번 버스가 10분 후 도착해요. 버스 좌석은 여유입니다.",
+            "81번, 81번 버스가 10분 후 도착해요. 버스 좌석은 여유입니다.",
             NavigationEventSpeech.line(
                 transit(
                     NavigationBusInfo(

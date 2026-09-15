@@ -16,16 +16,28 @@ internal object NaverTripStartSession {
     private var readyAtMs = 0L
     private var holdBusUntilMs = 0L
     private var notLiveSinceMs = 0L
+    private var lastLiveWindowId: Long? = null
 
     fun reset() {
         state = State.IDLE
         readyAtMs = 0L
         holdBusUntilMs = 0L
         notLiveSinceMs = 0L
+        lastLiveWindowId = null
     }
 
-    /** Guidance is gone. Ends the session so the next 안내시작 can speak again. */
-    fun noteNotLive(nowMs: Long): Boolean {
+    /** Last window where 안내 중 was seen. Android window id as Long. */
+    fun noteLiveWindow(windowId: Long) {
+        lastLiveWindowId = windowId
+    }
+
+    /**
+     * Same-window 안내 중 gone. Ends the session so the next 안내시작 can speak again.
+     * A different windowId is not end evidence — do not start or fire the timer.
+     */
+    fun noteNotLive(nowMs: Long, windowId: Long? = null): Boolean {
+        val last = lastLiveWindowId
+        if (last != null && windowId != null && last != windowId) return false
         if (notLiveSinceMs == 0L) notLiveSinceMs = nowMs
         if (state == State.IDLE) return false
         if (nowMs - notLiveSinceMs < NOT_LIVE_END_MS) return false
@@ -34,7 +46,8 @@ internal object NaverTripStartSession {
     }
 
     /** Live guidance. Arms once if idle. Flicker back to live does not re-arm. */
-    fun noteLive(nowMs: Long): Boolean {
+    fun noteLive(nowMs: Long, windowId: Long? = null): Boolean {
+        if (windowId != null) noteLiveWindow(windowId)
         notLiveSinceMs = 0L
         if (state != State.IDLE) return false
         request(nowMs)

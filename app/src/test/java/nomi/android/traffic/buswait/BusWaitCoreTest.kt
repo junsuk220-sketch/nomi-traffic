@@ -250,6 +250,35 @@ class BusWaitCoreTest {
     }
 
     @Test
+    fun `soon then six bounce does not clear stages and does not speak six again`() {
+        val core = BusWaitCore()
+        core.seed("88B")
+        assertEquals(
+            1,
+            core.observe(listOf(bus("88B", "곧 도착"), bus("88B", "7분")), 1_000L)!!.speakStage,
+        )
+        val firstSix = core.observe(listOf(bus("88B", "6분"), bus("88B", "18분")), 4_000L)!!
+        assertTrue(firstSix.switched)
+        assertEquals(10, firstSix.speakStage)
+        assertNull(
+            core.observe(listOf(bus("88B", "1분"), bus("88B", "7분")), 13_000L)!!.speakStage,
+        )
+        val soonAgain = core.observe(listOf(bus("88B", "곧 도착"), bus("88B", "7분")), 18_000L)!!
+        assertFalse(soonAgain.switched)
+        assertEquals(1, soonAgain.speakStage)
+        val bounce = core.observe(listOf(bus("88B", "6분"), bus("88B", "18분")), 18_050L)!!
+        assertTrue(bounce.switched)
+        assertEquals("6분", bounce.target!!.eta)
+        assertNull(bounce.speakStage)
+        val soonThird = core.observe(listOf(bus("88B", "곧 도착"), bus("88B", "7분")), 33_000L)!!
+        assertFalse(soonThird.switched)
+        assertNull(soonThird.speakStage)
+        val sixAgain = core.observe(listOf(bus("88B", "6분"), bus("88B", "18분")), 33_050L)!!
+        assertTrue(sixAgain.switched)
+        assertNull(sixAgain.speakStage)
+    }
+
+    @Test
     fun `switch ignores cooldown so the new bus can speak`() {
         val core = BusWaitCore()
         core.seed("81")

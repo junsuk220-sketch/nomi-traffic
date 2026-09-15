@@ -12,7 +12,7 @@ android {
         applicationId = "nomi.traffic"
         minSdk = 26
         targetSdk = 35
-        versionCode = 78
+        versionCode = 82
         versionName = "1.0.0"
     }
 

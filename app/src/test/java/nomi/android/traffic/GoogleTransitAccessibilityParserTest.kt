@@ -58,7 +58,7 @@ class GoogleTransitAccessibilityParserTest {
         assertEquals(NavigationEventType.TRANSIT, event.type)
         assertEquals("140", event.busInfo!!.arrivals[0].line)
         assertEquals("4분", event.busInfo!!.arrivals[0].eta)
-        assertEquals("140번 버스가 4분 후 도착해요.", NavigationEventSpeech.line(event))
+        assertEquals("140번, 140번 버스가 4분 후 도착해요.", NavigationEventSpeech.line(event))
     }
 
     @Test
@@ -71,7 +71,7 @@ class GoogleTransitAccessibilityParserTest {
                 etaText = "기타: 지금(실시간) 후",
             ),
         )
-        assertEquals("140번 버스, 곧 도착합니다.", NavigationEventSpeech.line(events.first()))
+        assertEquals("140번, 140번 버스, 곧 도착합니다.", NavigationEventSpeech.line(events.first()))
     }
 
     @Test
@@ -111,7 +111,7 @@ class GoogleTransitAccessibilityParserTest {
         assertEquals(1, events.size)
         assertEquals("7727", events[0].busInfo!!.arrivals[0].line)
         assertEquals("곧", events[0].busInfo!!.arrivals[0].eta)
-        assertEquals("7727번 버스, 곧 도착합니다.", NavigationEventSpeech.line(events[0]))
+        assertEquals("7727번, 7727번 버스, 곧 도착합니다.", NavigationEventSpeech.line(events[0]))
         assertTrue(events.none { it.action == GoogleMapsTransit.PREPARE_ALIGHT_ACTION })
     }
 
@@ -143,7 +143,7 @@ class GoogleTransitAccessibilityParserTest {
         )
         assertEquals("7727", events[0].busInfo!!.arrivals[0].line)
         assertEquals("2분", events[0].busInfo!!.arrivals[0].eta)
-        assertEquals("7727번 버스가 2분 후 도착해요.", NavigationEventSpeech.line(events[0]))
+        assertEquals("7727번, 7727번 버스가 2분 후 도착해요.", NavigationEventSpeech.line(events[0]))
         assertTrue(NavigationEventSpeechGate().accept(events[0]))
     }
 
@@ -220,7 +220,7 @@ class GoogleTransitAccessibilityParserTest {
         assertEquals("곧", briefing.busInfo!!.arrivals[0].eta)
         assertEquals(6, briefing.distanceMeters)
         assertEquals(
-            "1100번 버스, 곧 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
+            "1100번, 1100번 버스, 곧 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
             NavigationEventSpeech.line(briefing),
         )
         val gate = NavigationEventSpeechGate()
@@ -245,7 +245,7 @@ class GoogleTransitAccessibilityParserTest {
         )
         assertEquals("7분", withMinutes!!.busInfo!!.arrivals[0].eta)
         assertEquals(
-            "1100번 버스가 7분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
+            "1100번, 1100번 버스가 7분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다.",
             NavigationEventSpeech.line(withMinutes),
         )
         assertTrue(NavigationEventSpeechGate().accept(withMinutes))
@@ -602,7 +602,7 @@ class GoogleTransitAccessibilityParserTest {
         assertNull(NavigationEventSpeech.line(at1))
         assertTrue(gate.accept(soon))
         assertFalse(gate.accept(at2))
-        assertEquals("140번 버스, 곧 도착합니다.", NavigationEventSpeech.line(soon))
+        assertEquals("140번, 140번 버스, 곧 도착합니다.", NavigationEventSpeech.line(soon))
     }
 
     @Test

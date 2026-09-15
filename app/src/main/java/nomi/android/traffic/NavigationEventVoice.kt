@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import nomi.android.traffic.buswait.BusWaitFieldTrace
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
 
@@ -30,6 +31,7 @@ object NavigationEventVoice {
 
     fun prepare(context: Context) {
         appContext = context.applicationContext
+        BusWaitFieldTrace.attach(context.applicationContext.filesDir)
         speaker(context)
         ensureScreenWatch(context.applicationContext)
         syncScreenState(context.applicationContext)

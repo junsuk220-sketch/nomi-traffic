@@ -82,6 +82,61 @@ class NaverTripStartSessionTest {
     }
 
     @Test
+    fun `other window not-live does not end a spoken session`() {
+        val t0 = 200_000L
+        val windowA = 3397L
+        val windowB = 3407L
+        assertTrue(NaverTripStartSession.request(t0))
+        assertFalse(NaverTripStartSession.noteLive(t0 + 100, windowA))
+        NaverTripStartSession.markSpoken(t0 + 4_000)
+        assertTrue(NaverTripStartSession.hasSpokenBriefing())
+        assertFalse(NaverTripStartSession.noteNotLive(t0 + 5_000, windowB))
+        assertFalse(
+            NaverTripStartSession.noteNotLive(
+                t0 + 5_000 + NaverTripStartSession.NOT_LIVE_END_MS + 500,
+                windowB,
+            ),
+        )
+        assertTrue(NaverTripStartSession.hasSpokenBriefing())
+        assertFalse(NaverTripStartSession.noteLive(t0 + 8_000, windowA))
+        assertTrue(NaverTripStartSession.hasSpokenBriefing())
+        assertFalse(NaverTripStartSession.due(t0 + 8_000 + NaverTripStartSession.ARM_DELAY_MS))
+        assertFalse(NaverTripStartSession.request(t0 + 9_000))
+    }
+
+    @Test
+    fun `same window not-live still ends after the existing debounce`() {
+        val t0 = 300_000L
+        val windowA = 3397L
+        assertTrue(NaverTripStartSession.request(t0))
+        assertFalse(NaverTripStartSession.noteLive(t0 + 100, windowA))
+        NaverTripStartSession.markSpoken(t0 + 4_000)
+        assertFalse(NaverTripStartSession.noteNotLive(t0 + 5_000, windowA))
+        assertTrue(NaverTripStartSession.hasSpokenBriefing())
+        assertTrue(
+            NaverTripStartSession.noteNotLive(
+                t0 + 5_000 + NaverTripStartSession.NOT_LIVE_END_MS,
+                windowA,
+            ),
+        )
+        assertFalse(NaverTripStartSession.hasSpokenBriefing())
+        assertTrue(NaverTripStartSession.noteLive(t0 + 20_000, windowA))
+    }
+
+    @Test
+    fun `안내종료 reset ends immediately without waiting for not-live`() {
+        val t0 = 400_000L
+        val windowA = 3397L
+        assertTrue(NaverTripStartSession.request(t0))
+        assertFalse(NaverTripStartSession.noteLive(t0 + 100, windowA))
+        NaverTripStartSession.markSpoken(t0 + 4_000)
+        assertTrue(NaverTripStartSession.hasSpokenBriefing())
+        NaverTripStartSession.reset()
+        assertFalse(NaverTripStartSession.hasSpokenBriefing())
+        assertTrue(NaverTripStartSession.request(t0 + 4_100))
+    }
+
+    @Test
     fun `bus hold lifts after briefing window without consuming stages`() {
         val t0 = 50_000L
         NaverTripStartSession.request(t0)

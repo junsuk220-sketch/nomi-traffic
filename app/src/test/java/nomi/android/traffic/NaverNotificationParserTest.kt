@@ -56,13 +56,13 @@ class NaverNotificationParserTest {
         assertEquals("9분", event.busInfo!!.arrivals[1].eta)
         val briefing = NaverTripStartParser.asTripStart(event)!!
         assertEquals(
-            "88B번 버스가 2분 후 도착합니다. 다음 버스는 88B번, 9분 후 도착입니다.",
+            "88B번, 88B번 버스가 2분 후 도착합니다. 다음은 88B번, 9분 후 도착입니다.",
             NavigationEventSpeech.line(briefing),
         )
     }
 
     @Test
-    fun `302 bus board next is same line later else the next soonest`() {
+    fun `302 bus board next is remaining soonest after first`() {
         val event = NaverNotificationParser.parse(
             NaverNotificationParser.Snapshot(
                 packageName = "com.nhn.android.nmap",
@@ -74,7 +74,7 @@ class NaverNotificationParserTest {
             ),
         )!!
         assertEquals(
-            "다음 버스는 67번, 5분 후 도착입니다.",
+            "다음은 67번, 5분 후 도착입니다.",
             NavigationEventSpeech.naverNextTrainLine(event),
         )
     }
@@ -230,7 +230,7 @@ class NaverNotificationParserTest {
         )
         assertEquals("곧 도착", event!!.busInfo!!.arrivals[0].eta)
         assertEquals(
-            "81번 버스, 곧 도착합니다. 다음 버스는 99번, 곧 도착합니다.",
+            "81번, 81번 버스, 곧 도착합니다. 다음은 99번, 곧 도착합니다.",
             NavigationEventSpeech.line(event),
         )
         assertFalse(NavigationEventSpeechGate().accept(event))
