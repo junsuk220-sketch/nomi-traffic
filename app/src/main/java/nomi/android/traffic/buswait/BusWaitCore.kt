@@ -293,23 +293,6 @@ class BusWaitCore {
         return stage
     }
 
-    private fun stageForEta(eta: String): Int? {
-        val minutes = when {
-            TransitSoonEta.matches(eta) -> 1
-            else -> {
-                val m = ETA_MINUTES.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
-                if (m <= 1) 1 else m
-            }
-        }
-        return when {
-            minutes <= 1 -> 1
-            minutes <= 2 -> 2
-            minutes <= 5 -> 5
-            minutes <= 10 -> 10
-            else -> null
-        }
-    }
-
     companion object {
         internal const val ETA_SLACK_MINUTES = 3
         internal const val STOP_SLACK = 1
@@ -326,6 +309,27 @@ class BusWaitCore {
         /** Same vehicle: 10/5/2 stay quiet this long after the last speech. */
         internal const val STAGE_COOLDOWN_MS = 120_000L
         private val ETA_MINUTES = Regex("""(\d+)\s*분""")
+
+        /**
+         * 10 / 5 / 2 / 1=곧 ladder. Body unchanged; it only moved here so the
+         * Event-First judge can apply the same ladder without a second copy.
+         */
+        internal fun stageForEta(eta: String): Int? {
+            val minutes = when {
+                TransitSoonEta.matches(eta) -> 1
+                else -> {
+                    val m = ETA_MINUTES.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+                    if (m <= 1) 1 else m
+                }
+            }
+            return when {
+                minutes <= 1 -> 1
+                minutes <= 2 -> 2
+                minutes <= 5 -> 5
+                minutes <= 10 -> 10
+                else -> null
+            }
+        }
 
         internal fun soonest(arrivals: List<NavigationBusArrival>): NavigationBusArrival? =
             arrivals.minWithOrNull(soonestOrder)

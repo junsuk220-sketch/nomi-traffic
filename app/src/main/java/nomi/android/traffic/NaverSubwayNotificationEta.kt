@@ -13,7 +13,11 @@ internal object NaverSubwayNotificationEta {
 
     private val lineInTitle = Regex("""(\d+호선|[가-힣A-Za-z0-9]+선|GTX-[A-Za-z])""")
     private val clockInParens = Regex("""\((\d{1,2}):(\d{2})\)""")
+    private val clockOnly = Regex("""(\d{1,2}):(\d{2})""")
     private val busMinutesInParens = Regex("""\(\s*\d+\s*분""")
+
+    /** Beyond this a departure is timetable reading, not a wait cue. */
+    const val WAIT_HORIZON_MINUTES = 120
 
     fun parse(
         title: String?,
@@ -50,11 +54,35 @@ internal object NaverSubwayNotificationEta {
             val minute = match.groupValues[2].toIntOrNull() ?: continue
             if (hour > 23) continue
             val delta = minutesUntil(now, hour, minute) ?: continue
-            if (delta > 120) continue
+            if (delta > WAIT_HORIZON_MINUTES) continue
             minutes.add(delta)
         }
-        return minutes.map { if (it <= 1) "곧" else "${it}분" }.distinct()
+        return minutes.map { etaText(it) }.distinct()
     }
+
+    /**
+     * A single `HH:mm` departure against the moment it was seen: `17:16` read at
+     * 17:08:44 is 8. Null when [raw] is not a clock, when the train already left,
+     * or when it is further out than [WAIT_HORIZON_MINUTES].
+     *
+     * Same rules as [etasAhead] — ceiling minutes, a 30s grace before a clock
+     * counts as yesterday's, and the 180분 cap in [minutesUntil]. Unlike
+     * [etasAhead] this never falls back to the wall clock, so callers that must
+     * stay pure can use it.
+     */
+    internal fun clockMinutesUntil(raw: String, nowMillis: Long): Int? {
+        val match = clockOnly.matchEntire(raw.trim()) ?: return null
+        val hour = match.groupValues[1].toIntOrNull() ?: return null
+        val minute = match.groupValues[2].toIntOrNull() ?: return null
+        if (hour > 23 || minute > 59) return null
+        val delta = minutesUntil(nowMillis, hour, minute) ?: return null
+        if (delta > WAIT_HORIZON_MINUTES) return null
+        return delta
+    }
+
+    /** 1분 or less is 곧, which is how the 10 / 5 / 2 / 곧 ladder grades it. */
+    internal fun etaText(minutes: Int): String =
+        if (minutes <= 1) "곧" else "${minutes}분"
 
     private fun minutesUntil(nowMillis: Long, hour24: Int, minute: Int): Int? {
         val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }

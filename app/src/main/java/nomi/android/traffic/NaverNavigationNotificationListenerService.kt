@@ -6,6 +6,7 @@ import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.product.nav.NavigationEventType
 
 /**
@@ -17,6 +18,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
     override fun onListenerConnected() {
         Log.i(NaverMapNotification.TAG, "listener connected")
         NaverRideObservationLog.attach(filesDir)
+        EventFirstEngine.attach(filesDir)
         NavigationEventVoice.prepare(this)
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
@@ -100,6 +102,15 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                 "contentTitle=${title.orEmpty()} android.text=${text.orEmpty()} " +
                 NaverMapNotification.extrasDump(flattenExtras(extras)),
         )
+        // Event-First judges the same 302 from title/text alone. It claims speech
+        // only once its flag is on, and then the legacy path must stay quiet for
+        // this notification — never two judges on one event.
+        val eventFirstOwnsSpeech = EventFirstEngine.onTransitNotification(
+            context = this,
+            title = title,
+            text = text,
+            nowMs = System.currentTimeMillis(),
+        )
         val event = NaverNotificationParser.parse(
             NaverNotificationParser.Snapshot(
                 packageName = sbn.packageName,
@@ -123,22 +134,26 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                     "action=${event.action} " +
                     "raw=${event.rawText}",
             )
-            listOf(title, text, nowbarPrimary, chip, secondary, nowbarSecondary, event.action)
-                .forEach {
-                    NavigationEventVoice.noteNaverNearBoard(it)
-                    NavigationEventVoice.noteNaverPrepareAlight(it)
-                    NavigationEventVoice.noteNaverAlightStop(it)
+            if (eventFirstOwnsSpeech) {
+                Log.i(NaverMapNotification.TAG, "[EVENT_FIRST] legacy 302 judging skipped")
+            } else {
+                listOf(title, text, nowbarPrimary, chip, secondary, nowbarSecondary, event.action)
+                    .forEach {
+                        NavigationEventVoice.noteNaverNearBoard(it)
+                        NavigationEventVoice.noteNaverPrepareAlight(it)
+                        NavigationEventVoice.noteNaverAlightStop(it)
+                    }
+                val startHint = listOf(title, text, nowbarPrimary, chip)
+                    .any { NaverTripStartParser.isStartPhrase(it) }
+                if (startHint) {
+                    NavigationEventVoice.armNaverTripStart()
+                    NavigationEventVoice.pinNaverFromTripCache()
+                    Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] notification start phrase")
                 }
-            val startHint = listOf(title, text, nowbarPrimary, chip)
-                .any { NaverTripStartParser.isStartPhrase(it) }
-            if (startHint) {
-                NavigationEventVoice.armNaverTripStart()
-                NavigationEventVoice.pinNaverFromTripCache()
-                Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] notification start phrase")
+                // Do not re-arm trip start on every 302 ETA update — that only belongs
+                // on the first live edge / start phrase.
+                NavigationEventVoice.offer(this, event)
             }
-            // Do not re-arm trip start on every 302 ETA update — that only belongs
-            // on the first live edge / start phrase.
-            NavigationEventVoice.offer(this, event)
         }
         RouteCardAccess.naverIntake(this).onNotificationPosted(
             notificationId = sbn.id,
