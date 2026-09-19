@@ -110,6 +110,34 @@ class BusWaitFieldTraceTest {
     }
 
     @Test
+    fun `stages closed without speech are written every time`() {
+        fun write(at: Long) {
+            BusWaitFieldTrace.record(
+                nowMs = at,
+                source = "sheet",
+                stop = null,
+                pinned = setOf("15"),
+                seeded = setOf("15"),
+                prevLine = null,
+                prevEta = null,
+                arrivals = listOf(NavigationBusArrival("15", "2분")),
+                targetLine = "15",
+                targetEta = "2분",
+                switched = false,
+                speakStage = 2,
+                silence = null,
+                path = BusWaitTracePath.INITIAL,
+                skippedStages = listOf(10, 5),
+            )
+        }
+        write(1_000L)
+        write(1_001L)
+        val lines = BusWaitFieldTrace.file().readLines()
+        assertEquals(2, lines.size)
+        assertTrue(lines.first().contains("\"skip\":[10,5]"))
+    }
+
+    @Test
     fun `lines older than 24 hours are dropped`() {
         val now = 2_000_000_000_000L
         BusWaitFieldTrace.record(

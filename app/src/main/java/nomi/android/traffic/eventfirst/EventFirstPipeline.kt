@@ -30,6 +30,16 @@ internal class EventFirstPipeline(
         }
         val event = NaverEventParser.parse(title, text, nowMs)
             ?: return Step(null, EventFirstDecision.silence(Reason.SILENCE_UNPARSED), state, null)
+        return judge(event, nowMs)
+    }
+
+    /**
+     * An already-parsed event — a11y GuidanceEnd — skips 302 dedup and the
+     * title/text parser, then uses the same judge as a 302.
+     */
+    fun acceptEvent(event: NaverTransitEvent, nowMs: Long): Step = judge(event, nowMs)
+
+    private fun judge(event: NaverTransitEvent, nowMs: Long): Step {
         val judged = EventFirstJudge.judge(event, state, nowMs)
         state = judged.state
         val sentence = if (judged.decision.speak) {

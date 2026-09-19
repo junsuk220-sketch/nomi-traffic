@@ -1,5 +1,6 @@
 package nomi.android.traffic
 
+import nomi.android.traffic.buswait.BusWaitCore
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
 import nomi.product.nav.NavigationEventType
@@ -11,6 +12,7 @@ import nomi.product.nav.NavigationEventType
 class NavigationEventSpeechGate {
 
     private val naverSubwayStages = mutableSetOf<Int>()
+    private val spokenNaverSubwayWalkBriefs = mutableSetOf<String>()
     private val googleTransitStages = mutableSetOf<Int>()
     private val spokenPassages = mutableSetOf<String>()
     private val spokenNaverSubwayCars = mutableSetOf<String>()
@@ -21,6 +23,15 @@ class NavigationEventSpeechGate {
     private val spokenNaverBoardDirections = mutableSetOf<String>()
     private var spokenAlight = false
     private val spokenAlightStops = mutableSetOf<String>()
+    /**
+     * Naver just said 하차까지 1개 정류장/역 or 하차 후 환승, and the first
+     * subway ETA after that has not been spoken yet. One bit — not a Journey.
+     */
+    private var pendingTransferSubwayBrief = false
+    /** Last subway 302 clock head, e.g. `10:01`. */
+    private var lastSubwayClockHead: String? = null
+    /** The tracked head has been seen as `(도착)`. Reset only after this. */
+    private var subwayClockDeparted = false
 
     fun accept(event: NavigationEvent): Boolean {
         return when (event.type) {
@@ -33,8 +44,96 @@ class NavigationEventSpeechGate {
         return acceptTransitStage(naverSubwayStages, minutes)
     }
 
+    /**
+     * A new Naver guidance armed. Each cue below clears its own state — this is
+     * the only place the set is listed, so a new cue is added here once instead
+     * of at every live edge.
+     */
+    fun resetNaverJourneyCues() {
+        resetNaverSubwayStages()
+        resetNaverSubwayClockTrack()
+        resetNaverSubwayBoardBriefs()
+        resetTransferSubwayBrief()
+        resetNaverTransferCues()
+        resetNaverPrepareAlight()
+    }
+
+    private fun resetNaverSubwayClockTrack() {
+        lastSubwayClockHead = null
+        subwayClockDeparted = false
+    }
+
+    /** The subway ladder only. Clock-head tracking stays — a new train may reuse it. */
     fun resetNaverSubwayStages() {
         naverSubwayStages.clear()
+    }
+
+    /** The one-briefing-per-board slot only. */
+    fun resetNaverSubwayBoardBriefs() {
+        spokenNaverSubwayWalkBriefs.clear()
+    }
+
+    fun isTransferSubwayBriefPending(): Boolean = pendingTransferSubwayBrief
+
+    /** The experiment owns this bit and nothing else clears it (제7원칙). */
+    fun resetTransferSubwayBrief() {
+        pendingTransferSubwayBrief = false
+    }
+
+    /**
+     * Arms on the last-stop 302 (`하차까지 1개 정류장` / `하차까지 1개 역`)
+     * or on 하차 후 환승, including the unparenthesized form captured on
+     * device. Plain 이번 정류장에서 하차 does not arm.
+     */
+    fun noteAlightThenTransfer(title: String?, action: String?): Boolean {
+        if (!shouldArmTransferSubwayBrief(title) && !shouldArmTransferSubwayBrief(action)) {
+            return false
+        }
+        pendingTransferSubwayBrief = true
+        return true
+    }
+
+    /**
+     * Experiment tier (부록 E): after alight-imminent or 하차 후 환승, the first
+     * trusted KIND_SUBWAY board is briefed with 빠른 하차 wording. The experiment
+     * owns [pendingTransferSubwayBrief] and nothing else — the board slot and the
+     * ladder are booked through their owner, [takeFirstSubwayBoardBrief].
+     */
+    fun acceptTransferSubwayBrief(event: NavigationEvent): Boolean {
+        noteNaverSubwayClocks(event)
+        if (!pendingTransferSubwayBrief) return false
+        if (event.source != NavigationEventSource.NAVER) return false
+        if (event.rawText != NaverMapsTransit.KIND_SUBWAY) return false
+        val first = event.busInfo?.arrivals?.firstOrNull() ?: return false
+        if (first.line.isBlank()) return false
+        pendingTransferSubwayBrief = false
+        if (!takeFirstSubwayBoardBrief(event)) {
+            // Slot was already taken, or this title names no board. The sentence
+            // still spoke an ETA, so the ladder must be told which rung that was.
+            etaMinutes(event)?.let { acceptNaverSubwayMinutes(it) }
+        }
+        return true
+    }
+
+    /**
+     * One walk-to-subway briefing per station+line. Not a 10/5/2/soon stage.
+     * A later wait on the same board still uses the subway stage ladder.
+     */
+    fun acceptNaverSubwayWalkBrief(event: NavigationEvent): Boolean {
+        noteNaverSubwayClocks(event)
+        return takeFirstSubwayBoardBrief(event)
+    }
+
+    /**
+     * The single first-briefing slot for one station+line board. Two wordings
+     * compete for it, so booking the slot and telling the ladder which rung the
+     * sentence covered happen here and nowhere else (제19원칙).
+     */
+    private fun takeFirstSubwayBoardBrief(event: NavigationEvent): Boolean {
+        val key = naverSubwayWalkBriefKey(event) ?: return false
+        if (!spokenNaverSubwayWalkBriefs.add(key)) return false
+        etaMinutes(event)?.let { acceptNaverSubwayMinutes(it) }
+        return true
     }
 
     private fun acceptTransit(event: NavigationEvent): Boolean {
@@ -90,6 +189,11 @@ class NavigationEventSpeechGate {
             event.rawText != NaverMapsTransit.KIND_SUBWAY
         ) {
             return false
+        }
+        if (event.source == NavigationEventSource.NAVER &&
+            event.rawText == NaverMapsTransit.KIND_SUBWAY
+        ) {
+            noteNaverSubwayClocks(event)
         }
         val stages = when {
             event.source == NavigationEventSource.NAVER &&
@@ -157,17 +261,9 @@ class NavigationEventSpeechGate {
     }
 
     private fun acceptTransitStage(stages: MutableSet<Int>, minutes: Int): Boolean {
-        val stage = when {
-            minutes <= 1 -> 1
-            minutes <= 2 -> 2
-            minutes <= 5 -> 5
-            minutes <= 10 -> 10
-            else -> return false
-        }
+        val stage = BusWaitCore.stageForMinutes(minutes) ?: return false
         if (!stages.add(stage)) return false
-        for (coarser in listOf(10, 5, 2)) {
-            if (coarser > stage) stages.add(coarser)
-        }
+        stages.addAll(BusWaitCore.coarserStages(stage))
         return true
     }
 
@@ -176,6 +272,71 @@ class NavigationEventSpeechGate {
         val key = PASSAGE.find(event.action.trim())?.value ?: return false
         if (!spokenPassages.add(key)) return false
         return true
+    }
+
+    /**
+     * Subway next-train: reset the ladder only after `(도착)` and a later clock head.
+     * Relative countdown and a clock slide without arrived do not reset.
+     */
+    private fun noteNaverSubwayClocks(event: NavigationEvent) {
+        if (event.source != NavigationEventSource.NAVER) return
+        if (event.rawText != NaverMapsTransit.KIND_SUBWAY) return
+        val info = event.busInfo ?: return
+        if (info.arrived) {
+            subwayClockDeparted = true
+        }
+        val head = info.clocks.firstOrNull() ?: return
+        val previous = lastSubwayClockHead
+        if (previous == null) {
+            lastSubwayClockHead = head
+            return
+        }
+        if (subwayClockDeparted && isClockLater(head, previous)) {
+            resetNaverSubwayStages()
+            lastSubwayClockHead = head
+            subwayClockDeparted = false
+        }
+    }
+
+    private fun isClockLater(next: String, previous: String): Boolean {
+        val nextMin = clockMinutes(next) ?: return false
+        val previousMin = clockMinutes(previous) ?: return false
+        return nextMin > previousMin
+    }
+
+    private fun clockMinutes(clock: String): Int? {
+        val parts = clock.split(':')
+        if (parts.size != 2) return null
+        val hour = parts[0].toIntOrNull() ?: return null
+        val minute = parts[1].toIntOrNull() ?: return null
+        if (hour > 23 || minute > 59) return null
+        return hour * 60 + minute
+    }
+
+    private fun naverSubwayWalkBriefKey(event: NavigationEvent): String? {
+        if (event.source != NavigationEventSource.NAVER) return null
+        if (event.rawText != NaverMapsTransit.KIND_SUBWAY) return null
+        val line = event.busInfo?.arrivals?.firstOrNull()?.line?.trim().orEmpty()
+        if (line.isEmpty()) return null
+        val station = subwayBoardStation(event.title, line) ?: return null
+        return "$station|$line"
+    }
+
+    private fun subwayBoardStation(title: String, line: String): String? {
+        val head = title.trim()
+        val stripped = when {
+            head.endsWith("열차 승차") -> head.removeSuffix("열차 승차").trim()
+            head.endsWith("까지 걷기") -> head.removeSuffix("까지 걷기").trim()
+            else -> return null
+        }
+        // 302 rewrites `까지 걷기` → `도보 후 열차 승차` on the same board.
+        val board = stripped.removeSuffix("도보 후").trim()
+        val station = if (board.endsWith(line)) {
+            board.removeSuffix(line).trim()
+        } else {
+            board
+        }
+        return station.takeIf { it.isNotEmpty() }
     }
 
     private fun etaMinutes(event: NavigationEvent): Int? {
@@ -193,5 +354,24 @@ class NavigationEventSpeechGate {
     companion object {
         private val ETA_MINUTES = Regex("""(\d+)\s*분""")
         private val PASSAGE = Regex("""(\d+)\s*통해\s*(들어가기|나가기)""")
+        private val ALIGHT_THEN_TRANSFER =
+            Regex("""^이번 (역|정류장)(?:\([^)]+\))?에서 하차 후 환승(?:하세요)?\.?$""")
+        private val ALIGHT_IMMINENT =
+            Regex("""^하차까지 1개 (정류장|역)$""")
+
+        internal fun shouldArmTransferSubwayBrief(raw: String?): Boolean =
+            isAlightThenTransfer(raw) || isAlightImminent(raw)
+
+        internal fun isAlightThenTransfer(raw: String?): Boolean {
+            val head = raw?.trim().orEmpty()
+            if (head.isEmpty()) return false
+            return ALIGHT_THEN_TRANSFER.matches(head)
+        }
+
+        internal fun isAlightImminent(raw: String?): Boolean {
+            val head = raw?.trim().orEmpty()
+            if (head.isEmpty()) return false
+            return ALIGHT_IMMINENT.matches(head)
+        }
     }
 }

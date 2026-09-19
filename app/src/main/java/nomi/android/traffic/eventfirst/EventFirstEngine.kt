@@ -61,6 +61,26 @@ internal object EventFirstEngine {
         return owns
     }
 
+    /**
+     * A11y saw the end toast. Always silent: this only closes wait cues until
+     * the next [NaverTransitEvent.GuidanceStart].
+     */
+    fun onGuidanceEnd(nowMs: Long) {
+        val event = NaverTransitEvent.GuidanceEnd(reason = null, atMs = nowMs)
+        val step = synchronized(lock) { pipeline.acceptEvent(event, nowMs) }
+        val line = EventFirstLog.encode(
+            nowMs = nowMs,
+            title = "길안내를 종료합니다.",
+            text = null,
+            event = step.event,
+            state = step.state,
+            decision = step.decision,
+            spoken = step.sentence,
+        )
+        EventFirstLog.append(line, nowMs)
+        Log.i(NaverMapNotification.TAG, "[EVENT_FIRST] $line")
+    }
+
     fun resetForTest() {
         synchronized(lock) { pipeline.reset() }
     }

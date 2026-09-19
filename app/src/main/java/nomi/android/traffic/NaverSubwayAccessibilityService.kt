@@ -5,6 +5,8 @@ import android.os.PowerManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import nomi.android.traffic.eventfirst.EventFirstEngine
+import nomi.android.traffic.eventfirst.NaverA11yGuidanceEnd
 
 /**
  * Reads the current Naver Maps screen for subway 빠른 하차 / 빠른 환승,
@@ -60,7 +62,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 // replaces it must not speak one more bus.
                 NaverTripStartSession.reset()
                 NaverTripStartCache.clear()
-                NavigationEventVoice.leaveNaverWaitSheet()
+                NavigationEventVoice.onNaverGuidanceEnded()
                 wasLive = false
                 resetTransferState()
                 Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] end button, guidance ended")
@@ -100,8 +102,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 }
                 if (NaverTripStartSession.noteNotLive(now, windowId)) {
                     NaverTripStartDiag.logSessionEndTrigger(diagSeq, event, now, root, live)
-                    NavigationEventVoice.resetNaverTripStart()
-                    NavigationEventVoice.leaveNaverWaitSheet()
+                    NavigationEventVoice.onNaverGuidanceEnded()
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] session ended")
                 }
             } else {
@@ -114,19 +115,18 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             if (live && !wasLive) {
                 if (NaverTripStartSession.noteLive(now, windowId)) {
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance armed")
+                    resetTransferState()
+                    NavigationEventVoice.onNaverGuidanceStarted()
+                    NavigationEventVoice.pinNaverFromTripCache()
                 } else {
+                    // 안내 중 vanished for a few frames inside the same guidance.
+                    // A flicker is not a new trip — keep the subway cues already spoken.
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance began")
                 }
-                resetTransferState()
-                NavigationEventVoice.resetNaverTransferCues()
-                NavigationEventVoice.resetNaverSubwayStages()
-                NavigationEventVoice.resetNaverPrepareAlight()
-                NavigationEventVoice.pinNaverFromTripCache()
             }
             if (!live && wasLive) {
                 resetTransferState()
-                NavigationEventVoice.resetNaverTransferCues()
-                NavigationEventVoice.releaseNaverWaitSheet()
+                NavigationEventVoice.onNaverGuidanceOffScreen()
             }
             wasLive = live
 
@@ -164,6 +164,9 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 live = live,
                 blobs = screenBlobs,
             )
+            if (NaverA11yGuidanceEnd.read(screenBlobs)) {
+                EventFirstEngine.onGuidanceEnd(now)
+            }
             screenBlobs.forEach {
                 NavigationEventVoice.noteNaverNearBoard(it)
                 NavigationEventVoice.noteNaverPrepareAlight(it)

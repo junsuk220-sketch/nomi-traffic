@@ -15,8 +15,14 @@ enum class BusWaitSilence {
     UNSETTLED_FEED,
     /** ETA is outside 10 / 5 / 2 / soon. */
     NOT_A_STAGE,
-    /** That stage was already used on this vehicle. */
+    /** That stage was already spoken on this vehicle. */
     STAGE_ALREADY,
+    /**
+     * The stage is closed, but the raw ETA never landed in it — a lower stage
+     * consumed it. Normal, not a defect: distinct from [STAGE_ALREADY] so a
+     * quiet 10분 reads as "never existed", not as "existed and we stayed quiet".
+     */
+    SOURCE_NEVER_REACHED,
     /** Same vehicle, last speech is still inside the gap. */
     STAGE_COOLDOWN,
 }

@@ -49,6 +49,7 @@ internal object BusWaitFieldTrace {
         speakStage: Int?,
         silence: BusWaitSilence?,
         path: BusWaitTracePath?,
+        skippedStages: List<Int> = emptyList(),
     ) {
         try {
             synchronized(lock) {
@@ -66,7 +67,10 @@ internal object BusWaitFieldTrace {
                     append('|')
                     arrivals.forEach { append(it.line).append(':').append(it.eta).append(',') }
                 }
-                if (!switched && key == lastKey && nowMs - lastWriteAtMs < HEARTBEAT_MS) {
+                // A closed-without-speech rung is written once and never folded:
+                // its record is the only evidence that the stage existed at all.
+                val foldable = !switched && skippedStages.isEmpty()
+                if (foldable && key == lastKey && nowMs - lastWriteAtMs < HEARTBEAT_MS) {
                     return
                 }
                 val line = encode(
@@ -84,6 +88,7 @@ internal object BusWaitFieldTrace {
                     speakStage = speakStage,
                     silence = silence,
                     path = path,
+                    skippedStages = skippedStages,
                 )
                 val out = File(folder, FILE_NAME)
                 out.appendText(line + "\n")
@@ -133,6 +138,7 @@ internal object BusWaitFieldTrace {
         speakStage: Int?,
         silence: BusWaitSilence?,
         path: BusWaitTracePath?,
+        skippedStages: List<Int>,
     ): String {
         val seen = arrivals.joinToString(",") { a ->
             "{\"line\":${q(a.line)},\"eta\":${q(a.eta)}}"
@@ -148,6 +154,7 @@ internal object BusWaitFieldTrace {
             append(",\"sw\":").append(switched)
             append(",\"stage\":").append(speakStage?.toString() ?: "null")
             append(",\"sil\":").append(q(silence?.name))
+            append(",\"skip\":").append(skippedStages.joinToString(",", "[", "]"))
             append(",\"path\":").append(q(path?.name))
             append(",\"seen\":[").append(seen).append("]}")
         }

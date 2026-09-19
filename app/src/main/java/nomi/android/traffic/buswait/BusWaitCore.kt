@@ -22,6 +22,12 @@ class BusWaitCore {
         val silence: BusWaitSilence? = null,
         /** Existing observe() branch name. Diagnostic only. */
         val path: BusWaitTracePath? = null,
+        /**
+         * Stages this reading closed without speaking, because the raw ETA never
+         * landed in them. Their absence is normal, so it is recorded here rather
+         * than inferred later from a gap in the log.
+         */
+        val skippedStages: List<Int> = emptyList(),
     )
 
     private var pinned: Set<String> = emptySet()
@@ -37,6 +43,8 @@ class BusWaitCore {
     /** ETA of [tracked] before the last change. Speech-only: bounce switch must not reset stages. */
     private var etaBeforeTracked: String? = null
     private val stages = mutableSetOf<Int>()
+    /** Subset of [stages] the ETA never landed in — closed by a lower stage. */
+    private val skippedStages = mutableSetOf<Int>()
 
     fun pinnedLines(): Set<String> = pinned
 
@@ -59,7 +67,7 @@ class BusWaitCore {
         pendingEta = null
         lastSpokenAtMs = null
         etaBeforeTracked = null
-        stages.clear()
+        clearStages()
     }
 
     /**
@@ -80,7 +88,7 @@ class BusWaitCore {
         pendingEta = null
         lastSpokenAtMs = null
         etaBeforeTracked = null
-        stages.clear()
+        clearStages()
     }
 
     /**
@@ -179,8 +187,14 @@ class BusWaitCore {
     ): Tick {
         val bounce = isSpeechBounce(next, nowMs)
         trackReading(next, nowMs)
-        if (!bounce) stages.clear()
+        if (!bounce) clearStages()
         return tick(next, switched = true, nowMs = nowMs, eta = next.eta, path = path)
+    }
+
+    /** The two stage sets retire together; clearing one alone leaves stale skips. */
+    private fun clearStages() {
+        stages.clear()
+        skippedStages.clear()
     }
 
     /**
@@ -202,7 +216,7 @@ class BusWaitCore {
         path: BusWaitTracePath,
     ): Tick {
         val spoken = gatedStage(eta, nowMs, switched)
-        return Tick(target, switched, spoken.stage, spoken.silence, path)
+        return Tick(target, switched, spoken.stage, spoken.silence, path, spoken.skipped)
     }
 
     private fun trackReading(arrival: NavigationBusArrival, nowMs: Long) {
@@ -263,34 +277,45 @@ class BusWaitCore {
         pinned = pinned + arrivals.map { it.line.trim() }.filter { it.isNotEmpty() }
     }
 
-    private data class StageOut(val stage: Int?, val silence: BusWaitSilence?)
+    private data class StageOut(
+        val stage: Int?,
+        val silence: BusWaitSilence?,
+        val skipped: List<Int> = emptyList(),
+    )
 
     private fun gatedStage(eta: String, nowMs: Long, switched: Boolean): StageOut {
-        val stage = acceptStage(eta) ?: return StageOut(null, silenceForRejectedStage(eta))
+        val accepted = acceptStage(eta) ?: return StageOut(null, silenceForRejectedStage(eta))
+        val (stage, skipped) = accepted
         if (stage <= 1) {
             lastSpokenAtMs = nowMs
-            return StageOut(stage, null)
+            return StageOut(stage, null, skipped)
         }
         val last = lastSpokenAtMs
         if (!switched && last != null && nowMs - last < STAGE_COOLDOWN_MS) {
-            return StageOut(null, BusWaitSilence.STAGE_COOLDOWN)
+            return StageOut(null, BusWaitSilence.STAGE_COOLDOWN, skipped)
         }
         lastSpokenAtMs = nowMs
-        return StageOut(stage, null)
+        return StageOut(stage, null, skipped)
     }
 
     private fun silenceForRejectedStage(eta: String): BusWaitSilence {
         val stage = stageForEta(eta) ?: return BusWaitSilence.NOT_A_STAGE
-        return if (stage in stages) BusWaitSilence.STAGE_ALREADY else BusWaitSilence.NOT_A_STAGE
+        return when {
+            stage in skippedStages -> BusWaitSilence.SOURCE_NEVER_REACHED
+            stage in stages -> BusWaitSilence.STAGE_ALREADY
+            else -> BusWaitSilence.NOT_A_STAGE
+        }
     }
 
-    private fun acceptStage(eta: String): Int? {
+    private data class Accepted(val stage: Int, val skipped: List<Int>)
+
+    private fun acceptStage(eta: String): Accepted? {
         val stage = stageForEta(eta) ?: return null
         if (!stages.add(stage)) return null
-        for (coarser in listOf(10, 5, 2)) {
-            if (coarser > stage) stages.add(coarser)
-        }
-        return stage
+        // Only rungs newly closed here were skipped; ones already spoken keep their reason.
+        val skipped = coarserStages(stage).filter { stages.add(it) }
+        skippedStages.addAll(skipped)
+        return Accepted(stage, skipped)
     }
 
     companion object {
@@ -310,10 +335,7 @@ class BusWaitCore {
         internal const val STAGE_COOLDOWN_MS = 120_000L
         private val ETA_MINUTES = Regex("""(\d+)\s*분""")
 
-        /**
-         * 10 / 5 / 2 / 1=곧 ladder. Body unchanged; it only moved here so the
-         * Event-First judge can apply the same ladder without a second copy.
-         */
+        /** 10 / 5 / 2 / 1=곧 ladder over an ETA string. */
         internal fun stageForEta(eta: String): Int? {
             val minutes = when {
                 TransitSoonEta.matches(eta) -> 1
@@ -322,14 +344,31 @@ class BusWaitCore {
                     if (m <= 1) 1 else m
                 }
             }
-            return when {
-                minutes <= 1 -> 1
-                minutes <= 2 -> 2
-                minutes <= 5 -> 5
-                minutes <= 10 -> 10
-                else -> null
-            }
+            return stageForMinutes(minutes)
         }
+
+        /**
+         * The ladder itself, over minutes-until-arrival. Every layer that grades
+         * an ETA — bus wait, subway wait, Google, Event-First — calls this one.
+         * A second copy anywhere lets the ladders drift apart silently.
+         */
+        internal fun stageForMinutes(minutes: Int): Int? = when {
+            minutes <= 1 -> 1
+            minutes <= 2 -> 2
+            minutes <= 5 -> 5
+            minutes <= 10 -> 10
+            else -> null
+        }
+
+        /** The countable rungs. 곧(=1) is the floor and consumes nothing above it. */
+        private val COARSE_STAGES = listOf(10, 5, 2)
+
+        /**
+         * Stages that speaking [stage] also uses up. Skipping straight to 2분 has
+         * to close 5 and 10, or a later reading that rises back re-opens a rung we
+         * already walked past. Every layer that keeps spoken stages calls this one.
+         */
+        internal fun coarserStages(stage: Int): List<Int> = COARSE_STAGES.filter { it > stage }
 
         internal fun soonest(arrivals: List<NavigationBusArrival>): NavigationBusArrival? =
             arrivals.minWithOrNull(soonestOrder)

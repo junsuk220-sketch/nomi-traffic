@@ -14,7 +14,10 @@ internal object NaverSubwayNotificationEta {
     private val lineInTitle = Regex("""(\d+호선|[가-힣A-Za-z0-9]+선|GTX-[A-Za-z])""")
     private val clockInParens = Regex("""\((\d{1,2}):(\d{2})\)""")
     private val clockOnly = Regex("""(\d{1,2}):(\d{2})""")
-    private val busMinutesInParens = Regex("""\(\s*\d+\s*분""")
+    private val relativeMinutesInParens = Regex("""\(\s*(\d+)\s*분\s*\)""")
+    private val soonInParens = Regex("""\(\s*곧\s*도착\s*\)""")
+    /** Bare `(도착)`. Does not match `(곧 도착)`. */
+    private val arrivedInParens = Regex("""\(\s*도착\s*\)""")
 
     /** Beyond this a departure is timetable reading, not a wait cue. */
     const val WAIT_HORIZON_MINUTES = 120
@@ -27,23 +30,49 @@ internal object NaverSubwayNotificationEta {
         val head = title?.trim().orEmpty()
         val body = text?.trim().orEmpty()
         if (head.isEmpty() || body.isEmpty()) return null
-        if (busMinutesInParens.containsMatchIn(body)) return null
         if (!looksLikeSubway(head, body)) return null
         val line = lineInTitle.find(head)?.groupValues?.get(1)?.trim() ?: return null
+        val clocks = extractClocks(body)
+        val arrived = arrivedInParens.containsMatchIn(body)
         // Naver lists up to three departures; keep this train and the next one.
         val etas = etasAhead(body, nowMillis).take(2)
-        if (etas.isEmpty()) return null
+        if (etas.isEmpty()) {
+            if (!arrived) return null
+            return NavigationBusInfo(
+                raw = "$line 도착 | $body",
+                arrivals = listOf(NavigationBusArrival(line = line, eta = "도착")),
+                clocks = emptyList(),
+                arrived = true,
+            )
+        }
         return NavigationBusInfo(
             raw = "$line ${etas.first()} | $body",
             arrivals = etas.map { NavigationBusArrival(line = line, eta = it) },
+            clocks = clocks,
+            arrived = arrived,
         )
     }
 
     private fun looksLikeSubway(title: String, text: String): Boolean {
         if (lineInTitle.containsMatchIn(title)) return true
         if (title.contains("열차") || title.contains("지하철")) return true
-        if (text.contains("행 (") && clockInParens.containsMatchIn(text)) return true
+        if (text.contains("행 (") &&
+            (clockInParens.containsMatchIn(text) ||
+                relativeMinutesInParens.containsMatchIn(text) ||
+                soonInParens.containsMatchIn(text))
+        ) {
+            return true
+        }
         return false
+    }
+
+    private fun extractClocks(text: String): List<String> {
+        val out = mutableListOf<String>()
+        for (match in clockInParens.findAll(text)) {
+            val clock = "${match.groupValues[1]}:${match.groupValues[2]}"
+            if (clock !in out) out.add(clock)
+        }
+        return out
     }
 
     private fun etasAhead(text: String, nowMillis: Long): List<String> {
@@ -56,6 +85,19 @@ internal object NaverSubwayNotificationEta {
             val delta = minutesUntil(now, hour, minute) ?: continue
             if (delta > WAIT_HORIZON_MINUTES) continue
             minutes.add(delta)
+        }
+        // Clocks win when Naver still prints HH:mm. Relative (N분)/(곧 도착)
+        // only fills the wait after that clock line is gone.
+        if (minutes.isNotEmpty()) {
+            return minutes.map { etaText(it) }.distinct()
+        }
+        for (match in relativeMinutesInParens.findAll(text)) {
+            val delta = match.groupValues[1].toIntOrNull() ?: continue
+            if (delta > WAIT_HORIZON_MINUTES) continue
+            minutes.add(delta)
+        }
+        if (soonInParens.containsMatchIn(text)) {
+            minutes.add(1)
         }
         return minutes.map { etaText(it) }.distinct()
     }

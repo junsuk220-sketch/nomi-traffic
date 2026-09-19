@@ -1,43 +1,29 @@
 package nomi.android.traffic
 
-import nomi.product.nav.NavigationEvent
-
 /**
- * Holds 빠른 하차 / 빠른 환승 until Naver itself says we arrived at the
- * boarding stop (`승차역 부근에 도착했습니다`).
+ * Observation tier: records that Naver said we reached the boarding stop
+ * (`승차역 부근에 도착했습니다`). Zero occurrences in the 2026-09-15~18 field
+ * capture, so it gates nothing and triggers nothing — there is deliberately no
+ * way to read this state. Promoting it needs field evidence and a protection
+ * test first (constitution 8-1 · 8-2 · 제22원칙).
  * Broad scraps like `역 부근` or `도보 후 열차 승차` fire during the walk.
  */
 internal object NaverNearBoardNotice {
 
+    /** Log-once latch: the scrap repeats on every accessibility sweep. */
     @Volatile
-    private var armed = false
-    @Volatile
-    private var pendingCar: NavigationEvent? = null
+    private var recorded = false
 
-    fun isArmed(): Boolean = armed
-
+    /** @return true the first time this journey sees the real boarding-stop wording. */
     fun note(raw: String?): Boolean {
-        if (armed) return false
+        if (recorded) return false
         if (!isNearBoard(raw)) return false
-        armed = true
+        recorded = true
         return true
     }
 
-    fun holdCar(event: NavigationEvent) {
-        if (armed) return
-        pendingCar = event
-    }
-
-    fun takePendingCar(): NavigationEvent? {
-        if (!armed) return null
-        val event = pendingCar ?: return null
-        pendingCar = null
-        return event
-    }
-
     fun reset() {
-        armed = false
-        pendingCar = null
+        recorded = false
     }
 
     internal fun isNearBoard(raw: String?): Boolean {

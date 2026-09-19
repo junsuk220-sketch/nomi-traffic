@@ -30,7 +30,7 @@ class NaverNotificationParserTest {
         assertEquals("3분", arrivals[0].eta)
         assertEquals("21분", arrivals[1].eta)
         assertEquals(
-            "3호선이 3분 후 출발해요. 다음 열차는 21분 후 도착입니다.",
+            "3호선 오금행 열차가 3분, 3분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertEquals(
@@ -102,6 +102,33 @@ class NaverNotificationParserTest {
             cal.get(java.util.Calendar.HOUR_OF_DAY),
             cal.get(java.util.Calendar.MINUTE),
         )
+    }
+
+    private fun wallClock(hour: Int, minute: Int, second: Int): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, hour)
+        cal.set(java.util.Calendar.MINUTE, minute)
+        cal.set(java.util.Calendar.SECOND, second)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun liveBoard(departure: String) = NaverNotificationParser.parse(
+        NaverNotificationParser.Snapshot(
+            packageName = "com.nhn.android.nmap",
+            notificationId = 301,
+            channel = "302_PUBTRANS_POPUP",
+            title = "정발산역 3호선 열차 승차",
+            text = "마두역 방면 빠른 하차: 2-4",
+            bigText = "마두역 방면 빠른 하차: 2-4\n$departure",
+            timestampMillis = wallClock(17, 5, 38),
+        ),
+    )!!
+
+    private fun subwayEtaMinutes(event: nomi.product.nav.NavigationEvent): Int? {
+        val eta = event.busInfo?.arrivals?.firstOrNull()?.eta ?: return null
+        if (TransitSoonEta.matches(eta)) return 1
+        return Regex("""(\d+)\s*분""").find(eta)?.groupValues?.get(1)?.toIntOrNull()
     }
 
     @Test
@@ -263,7 +290,7 @@ class NaverNotificationParserTest {
         assertEquals("3호선", event.busInfo!!.arrivals[0].line)
         assertEquals("5분", event.busInfo!!.arrivals[0].eta)
         assertEquals(
-            "3호선이 5분 후 출발해요.",
+            "3호선 오금행 열차가 5분, 5분 후 도착합니다.",
             NavigationEventSpeech.line(event),
         )
         val gate = NavigationEventSpeechGate()
@@ -295,6 +322,149 @@ class NaverNotificationParserTest {
         )
         assertEquals("곧", event!!.busInfo!!.arrivals[0].eta)
         assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
+    }
+
+    @Test
+    fun `302 board text car cue still reads clocks from bigText`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "정발산역 3호선 열차 승차",
+                text = "마두역 방면 빠른 하차: 2-4",
+                bigText = "마두역 방면 빠른 하차: 2-4\n오금행 (11:16)\n오금행 (11:23)\n오금행 (11:35)",
+                timestampMillis = wallClock(11, 10, 18),
+            ),
+        )!!
+        val arrivals = event.busInfo!!.arrivals
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", arrivals[0].line)
+        assertEquals(2, arrivals.size)
+        assertEquals("6분", arrivals[0].eta)
+        assertEquals("13분", arrivals[1].eta)
+    }
+
+    @Test
+    fun `302 subway clocks in text are unchanged when bigText also has clocks`() {
+        val now = System.currentTimeMillis()
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "정발산역 3호선까지 걷기",
+                text = "오금행 (${clockAfter(3)}), 오금행 (${clockAfter(21)})",
+                bigText = "오금행 (${clockAfter(8)}), 오금행 (${clockAfter(30)})",
+                timestampMillis = now,
+            ),
+        )!!
+        val arrivals = event.busInfo!!.arrivals
+        assertEquals(2, arrivals.size)
+        assertEquals("3분", arrivals[0].eta)
+        assertEquals("21분", arrivals[1].eta)
+    }
+
+    @Test
+    fun `live 302 relative two minutes is subway stage 2`() {
+        val event = liveBoard("오금행 (2분)")
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("2분", event.busInfo!!.arrivals[0].eta)
+        assertEquals(2, subwayEtaMinutes(event))
+        assertTrue(NavigationEventSpeechGate().accept(event))
+    }
+
+    @Test
+    fun `live 302 relative one minute is subway soon`() {
+        val event = liveBoard("오금행 (1분)")
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("곧", event.busInfo!!.arrivals[0].eta)
+        assertEquals(1, subwayEtaMinutes(event))
+        assertTrue(NavigationEventSpeechGate().accept(event))
+    }
+
+    @Test
+    fun `live 302 soon-arriving is subway soon`() {
+        val event = liveBoard("오금행 (곧 도착)")
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("곧", event.busInfo!!.arrivals[0].eta)
+        assertEquals(1, subwayEtaMinutes(event))
+        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
+        assertTrue(NavigationEventSpeechGate().accept(event))
+    }
+
+    @Test
+    fun `live 302 clock triple still uses absolute clocks`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "정발산역 3호선 열차 승차",
+                text = "마두역 방면 빠른 하차: 2-4",
+                bigText = "마두역 방면 빠른 하차: 2-4\n오금행 (17:08), 오금행 (17:15), 오금행 (17:20)",
+                timestampMillis = wallClock(17, 4, 9),
+            ),
+        )!!
+        val arrivals = event.busInfo!!.arrivals
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals(2, arrivals.size)
+        assertEquals("4분", arrivals[0].eta)
+        assertEquals("11분", arrivals[1].eta)
+        assertEquals(listOf("17:08", "17:15", "17:20"), event.busInfo!!.clocks)
+        assertFalse(event.busInfo!!.arrived)
+    }
+
+    @Test
+    fun `live 302 clock list preserves original heads`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "정발산역 3호선 열차 승차",
+                text = "오금행 (10:01), (10:07), (10:14)",
+                timestampMillis = wallClock(9, 50, 0),
+            ),
+        )!!
+        assertEquals(listOf("10:01", "10:07", "10:14"), event.busInfo!!.clocks)
+        assertFalse(event.busInfo!!.arrived)
+        assertEquals("11분", event.busInfo!!.arrivals[0].eta)
+        assertEquals("17분", event.busInfo!!.arrivals[1].eta)
+    }
+
+    @Test
+    fun `live 302 arrived is arrived not soon`() {
+        val event = liveBoard("오금행 (도착)")
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertTrue(event.busInfo!!.arrived)
+        assertTrue(event.busInfo!!.clocks.isEmpty())
+        assertEquals("도착", event.busInfo!!.arrivals[0].eta)
+    }
+
+    @Test
+    fun `live 302 soon-arriving is not arrived`() {
+        val event = liveBoard("오금행 (곧 도착)")
+        assertFalse(event.busInfo!!.arrived)
+        assertTrue(event.busInfo!!.clocks.isEmpty())
+        assertEquals("곧", event.busInfo!!.arrivals[0].eta)
+    }
+
+    @Test
+    fun `live 302 bus relative minutes stay a bus wait`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "라페스타.먹자골목까지 걷기",
+                text = "81 (2분), 99 (3분), 81 (19분)",
+            ),
+        )!!
+        assertEquals("81 (2분), 99 (3분), 81 (19분)", event.rawText)
+        assertEquals("81", event.busInfo!!.arrivals[0].line)
+        assertEquals("2분", event.busInfo!!.arrivals[0].eta)
+        assertEquals("99", event.busInfo!!.arrivals[1].line)
     }
 
     @Test

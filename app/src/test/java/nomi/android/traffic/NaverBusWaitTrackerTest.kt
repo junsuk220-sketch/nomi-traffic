@@ -130,11 +130,11 @@ class NaverBusWaitTrackerTest {
     @Test
     fun `subway first trip keeps bus silent until transfer names the bus`() {
         val tracker = NaverBusWaitTracker()
-        tracker.pinSubwayLine("3호선")
-        assertTrue(tracker.isBusClosedForSubwayTrip())
+        tracker.closeForSubwayTrip()
+        assertTrue(tracker.isClosedForSubwayTrip())
         assertTrue(tracker.pinnedBusLines().isEmpty())
         tracker.pinBusLine("67")
-        assertFalse(tracker.isBusClosedForSubwayTrip())
+        assertFalse(tracker.isClosedForSubwayTrip())
         assertEquals(2, tracker.onNotification(listOf(bus("67", "2분")))!!.speakStage)
     }
 

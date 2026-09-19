@@ -21,10 +21,10 @@ internal object NaverBusWaitSpeech {
         val arrivals = event.busInfo?.arrivals ?: return event
         if (arrivals.isEmpty()) return event
         val seen = arrivals.joinToString(",") { "${it.line}:${it.eta}" }
-        if (tracker.isBusClosedForSubwayTrip()) {
+        if (tracker.isClosedForSubwayTrip()) {
             logSkip(
                 "[NAVER_BUS_STAGE] skip, subway trip " +
-                    "subway=${tracker.pinnedSubwayLine().orEmpty()} seen=$seen",
+                    "subway=${NaverSubwayPin.pinned().orEmpty()} seen=$seen",
             )
             return null
         }

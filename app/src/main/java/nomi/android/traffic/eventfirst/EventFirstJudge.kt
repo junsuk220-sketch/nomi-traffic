@@ -24,51 +24,61 @@ internal object EventFirstJudge {
         event: NaverTransitEvent,
         state: EventFirstState,
         nowMs: Long,
-    ): Outcome = when (event) {
-        // Naver announcing that it started is not news. The next wait event briefs.
-        is NaverTransitEvent.GuidanceStart ->
-            Outcome(silence(Reason.SILENCE_GUIDANCE_START), state)
+    ): Outcome {
+        if (state.awaitingStart && event is NaverTransitEvent.WaitBus) {
+            return Outcome(silence(Reason.SILENCE_WAIT_AFTER_END), state)
+        }
+        if (state.awaitingStart && event is NaverTransitEvent.WaitTrain) {
+            return Outcome(silence(Reason.SILENCE_WAIT_AFTER_END), state)
+        }
+        return when (event) {
+            // Naver announcing that it started is not news. The next wait event briefs.
+            // A previous end only lifts the wait gate here — this is not a reset.
+            is NaverTransitEvent.GuidanceStart ->
+                Outcome(silence(Reason.SILENCE_GUIDANCE_START), state.copy(awaitingStart = false))
 
-        // Guidance is over: nothing we remember describes the present any more.
-        is NaverTransitEvent.GuidanceEnd ->
-            Outcome(silence(Reason.SILENCE_GUIDANCE_END), EventFirstState())
+            // Wait memory is dropped so the next start can brief the same board.
+            // awaitingStart stays on until that start, so a leftover 302 cannot speak.
+            is NaverTransitEvent.GuidanceEnd ->
+                Outcome(silence(Reason.SILENCE_GUIDANCE_END), EventFirstState(awaitingStart = true))
 
-        is NaverTransitEvent.WaitBus -> wait(
-            scopeKey = event.scopeKey,
-            arrivals = event.arrivals,
-            briefType = SpeechType.BUS_BRIEF,
-            stageType = SpeechType.BUS_STAGE,
-            state = state,
-            nowMs = nowMs,
-        )
+            is NaverTransitEvent.WaitBus -> wait(
+                scopeKey = event.scopeKey,
+                arrivals = event.arrivals,
+                briefType = SpeechType.BUS_BRIEF,
+                stageType = SpeechType.BUS_STAGE,
+                state = state,
+                nowMs = nowMs,
+            )
 
-        is NaverTransitEvent.WaitTrain -> waitTrain(event, state, nowMs)
+            is NaverTransitEvent.WaitTrain -> waitTrain(event, state, nowMs)
 
-        is NaverTransitEvent.BoardTrain -> board(event, state, nowMs)
+            is NaverTransitEvent.BoardTrain -> board(event, state, nowMs)
 
-        is NaverTransitEvent.Riding -> riding(state)
+            is NaverTransitEvent.Riding -> riding(state)
 
-        is NaverTransitEvent.AlightSoon -> alight(
-            station = event.station,
-            scopeKey = event.scopeKey,
-            mark = EventFirstState.Mark.ALIGHT_SOON,
-            reason = Reason.SPEAK_ALIGHT_SOON,
-            speechType = SpeechType.ALIGHT_SOON,
-            state = state,
-            nowMs = nowMs,
-        )
+            is NaverTransitEvent.AlightSoon -> alight(
+                station = event.station,
+                scopeKey = event.scopeKey,
+                mark = EventFirstState.Mark.ALIGHT_SOON,
+                reason = Reason.SPEAK_ALIGHT_SOON,
+                speechType = SpeechType.ALIGHT_SOON,
+                state = state,
+                nowMs = nowMs,
+            )
 
-        is NaverTransitEvent.AlightNow -> alight(
-            station = event.station,
-            scopeKey = event.scopeKey,
-            mark = EventFirstState.Mark.ALIGHT_NOW,
-            reason = Reason.SPEAK_ALIGHT_NOW,
-            speechType = SpeechType.ALIGHT_NOW,
-            state = state,
-            nowMs = nowMs,
-        )
+            is NaverTransitEvent.AlightNow -> alight(
+                station = event.station,
+                scopeKey = event.scopeKey,
+                mark = EventFirstState.Mark.ALIGHT_NOW,
+                reason = Reason.SPEAK_ALIGHT_NOW,
+                speechType = SpeechType.ALIGHT_NOW,
+                state = state,
+                nowMs = nowMs,
+            )
 
-        is NaverTransitEvent.AlightTransfer -> transfer(event, state, nowMs)
+            is NaverTransitEvent.AlightTransfer -> transfer(event, state, nowMs)
+        }
     }
 
     /**

@@ -114,7 +114,7 @@ class EventFirstJudgeTest {
         ride.at(0, "학익시장앞 버스 승차", "4 (10분), 4 (23분)")
         val ended = ride.at(60, "길안내를 종료합니다.", "현위치가 예상 경로를 벗어났습니다.")
         assertEquals(Reason.SILENCE_GUIDANCE_END, ended.decision.reason)
-        assertEquals(EventFirstState(), ride.state)
+        assertEquals(EventFirstState(awaitingStart = true), ride.state)
         assertEquals(
             Reason.SILENCE_GUIDANCE_START,
             ride.at(93, "길안내를 시작합니다.", "우림보보카운티2까지 이동").decision.reason,

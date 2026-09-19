@@ -13,3 +13,6 @@ local.properties
 .tmp*/
 .tmp-*
 *.log
+
+# Pulled field traces (device data, never committed)
+.field/

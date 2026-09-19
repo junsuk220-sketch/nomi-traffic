@@ -7,11 +7,21 @@ import nomi.product.nav.NavigationEventSource
 import nomi.product.nav.NavigationEventType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.After
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NavigationEventSpeechTest {
+
+    /**
+     * [NavigationEventSpeech] reads no tracker state, so nothing here needs a
+     * clean slate. Only the tests that arm 부근 on purpose leave a mark to clear.
+     */
+    @After
+    fun tearDown() {
+        NaverNearBoardNotice.reset()
+    }
 
     @Test
     fun `walk landmark is silent in product v1`() {
@@ -292,8 +302,7 @@ class NavigationEventSpeechTest {
     }
 
     @Test
-    fun `walk wait names the remaining soonest next bus until near the stop`() {
-        NaverNearBoardNotice.reset()
+    fun `every wait cue names the remaining soonest next bus`() {
         val event = transit(
             NavigationBusInfo(
                 raw = "98 3분, 89 5분, 66 9분, 83 11분",
@@ -305,21 +314,16 @@ class NavigationEventSpeechTest {
                 ),
             ),
         )
-        assertEquals(
-            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음은 89번, 5분 후 도착입니다.",
-            NavigationEventSpeech.line(event),
-        )
+        val expected =
+            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음은 89번, 5분 후 도착입니다."
+        assertEquals(expected, NavigationEventSpeech.line(event))
+        // 관측 등급 신호는 확정 등급 발화의 게이트가 될 수 없다 (V2 부록 E).
         NaverNearBoardNotice.note("승차정류장 부근입니다.")
-        assertEquals(
-            "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다.",
-            NavigationEventSpeech.line(event),
-        )
-        NaverNearBoardNotice.reset()
+        assertEquals(expected, NavigationEventSpeech.line(event))
     }
 
     @Test
-    fun `walk subway names this train and the next until near the station`() {
-        NaverNearBoardNotice.reset()
+    fun `every subway wait cue names this train and the next`() {
         val event = transit(
             NavigationBusInfo(
                 raw = "3호선 3분, 3호선 10분",
@@ -329,21 +333,153 @@ class NavigationEventSpeechTest {
                 ),
             ),
         ).copy(rawText = NaverMapsTransit.KIND_SUBWAY)
-        assertEquals(
-            "3호선이 3분 후 출발해요. 다음 열차는 10분 후 도착입니다.",
-            NavigationEventSpeech.line(event),
-        )
+        val expected = "3호선이 3분, 3분 후 도착합니다. 다음 열차는 10분 후 도착입니다."
+        assertEquals(expected, NavigationEventSpeech.line(event))
         NaverNearBoardNotice.note("승차역 부근입니다.")
+        assertEquals(expected, NavigationEventSpeech.line(event))
+    }
+
+    @Test
+    fun `a near-board scrap cannot reword a Google subway wait`() {
+        val event = transit(
+            NavigationBusInfo(
+                raw = "3호선 8분",
+                arrivals = listOf(NavigationBusArrival("3호선", "8분")),
+            ),
+        ).copy(source = NavigationEventSource.GOOGLE, rawText = GoogleMapsTransit.KIND_SUBWAY)
+        val expected = "3호선이 8분 후 출발해요."
+        assertEquals(expected, NavigationEventSpeech.line(event))
+        NaverNearBoardNotice.note("승차역 부근입니다.")
+        assertEquals(expected, NavigationEventSpeech.line(event))
+    }
+
+    @Test
+    fun `transfer subway brief names headsign next train and fast alight`() {
+        val event = subwayWait(
+            raw = "3호선 8분 | 마두역 방면 빠른 하차: 2-4\n오금행 (17:08), 오금행 (17:15)",
+            arrivals = listOf(
+                NavigationBusArrival("3호선", "8분"),
+                NavigationBusArrival("3호선", "15분"),
+            ),
+        )
         assertEquals(
-            "3호선이 3분 후 출발해요.",
+            "3호선 오금행 열차가 8분, 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다. 빠른 하차는 2-4번입니다.",
+            NavigationEventSpeech.line(event, includeFastAlight = true),
+        )
+    }
+
+    @Test
+    fun `stage subway wait keeps headsign and omits fast alight`() {
+        val event = subwayWait(
+            raw = "3호선 8분 | 마두역 방면 빠른 하차: 2-4\n오금행 (17:08), 오금행 (17:15)",
+            arrivals = listOf(
+                NavigationBusArrival("3호선", "8분"),
+                NavigationBusArrival("3호선", "15분"),
+            ),
+        )
+        assertEquals(
+            "3호선 오금행 열차가 8분, 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            NavigationEventSpeech.line(event, includeFastAlight = false),
+        )
+        assertEquals(
+            "3호선 오금행 열차가 8분, 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
-        NaverNearBoardNotice.reset()
+    }
+
+    @Test
+    fun `two-minute subway stage names this train only`() {
+        val event = subwayWait(
+            raw = "3호선 2분 | 마두역 방면 빠른 하차: 2-4\n오금행 (2분)",
+            arrivals = listOf(NavigationBusArrival("3호선", "2분")),
+        )
+        assertEquals(
+            "3호선 오금행 열차가 2분, 2분 후 도착합니다.",
+            NavigationEventSpeech.line(event),
+        )
+        assertFalse(NavigationEventSpeech.line(event)!!.contains("다음 열차"))
+        assertFalse(NavigationEventSpeech.line(event)!!.contains("빠른 하차"))
+    }
+
+    @Test
+    fun `subway wait without a bound keeps the line subject`() {
+        val event = subwayWait(
+            raw = "3호선 8분 | 마두역 방면 빠른 하차: 2-4",
+            arrivals = listOf(NavigationBusArrival("3호선", "8분")),
+        )
+        assertEquals(
+            "3호선이 8분, 8분 후 도착합니다. 빠른 하차는 2-4번입니다.",
+            NavigationEventSpeech.line(event, includeFastAlight = true),
+        )
+        assertEquals(
+            "3호선이 8분, 8분 후 도착합니다.",
+            NavigationEventSpeech.line(event),
+        )
+    }
+
+    @Test
+    fun `transfer subway brief omits fast alight when the board has none`() {
+        val event = subwayWait(
+            raw = "3호선 8분 | 오금행 (17:08), 오금행 (17:15)",
+            arrivals = listOf(
+                NavigationBusArrival("3호선", "8분"),
+                NavigationBusArrival("3호선", "15분"),
+            ),
+        )
+        val line = NavigationEventSpeech.line(event, includeFastAlight = true)!!
+        assertEquals(
+            "3호선 오금행 열차가 8분, 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            line,
+        )
+        assertFalse(line.contains("빠른 하차"))
+    }
+
+    private fun subwayWait(
+        raw: String,
+        arrivals: List<NavigationBusArrival>,
+    ) = NavigationEvent(
+        source = NavigationEventSource.NAVER,
+        type = NavigationEventType.TRANSIT,
+        notificationId = 301,
+        channel = "302_PUBTRANS_POPUP",
+        title = "정발산역 3호선 열차 승차",
+        action = "정발산역 3호선 열차 승차",
+        distanceMeters = null,
+        rawText = NaverMapsTransit.KIND_SUBWAY,
+        busInfo = NavigationBusInfo(raw = raw, arrivals = arrivals),
+        timestampMillis = 0L,
+    )
+
+    @Test
+    fun `near-board subway exit repeats three minutes with cars 3-2`() {
+        assertEquals(
+            "3호선 오금행 열차가 3분, 3분 후 도착합니다. 빠른 하차는 3-2번입니다.",
+            NavigationEventSpeech.line(nearBoardExit(minutes = 3, cars = "3-2")),
+        )
+    }
+
+    @Test
+    fun `near-board subway exit repeats five minutes with cars 2-4`() {
+        assertEquals(
+            "3호선 오금행 열차가 5분, 5분 후 도착합니다. 빠른 하차는 2-4번입니다.",
+            NavigationEventSpeech.line(nearBoardExit(minutes = 5, cars = "2-4")),
+        )
+    }
+
+    @Test
+    fun `near-board subway soon wait wording is unchanged`() {
+        val event = transit(
+            NavigationBusInfo(
+                raw = "3호선 곧",
+                arrivals = listOf(NavigationBusArrival("3호선", "곧")),
+            ),
+        ).copy(rawText = NaverMapsTransit.KIND_SUBWAY)
+        NaverNearBoardNotice.note("승차역 부근입니다.")
+        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
     }
 
     @Test
     fun `focused wait event still carries the next bus`() {
-        NaverNearBoardNotice.reset()
         val tracker = NaverBusWaitTracker()
         tracker.pinBusLine("98")
         val event = NavigationEvent(
@@ -371,7 +507,6 @@ class NavigationEventSpeechTest {
             "98번, 98번 버스가 3분 후 도착해요. 버스 좌석은 여유입니다. 다음은 89번, 5분 후 도착입니다.",
             NavigationEventSpeech.line(focused),
         )
-        NaverNearBoardNotice.reset()
     }
 
     @Test
@@ -448,6 +583,23 @@ class NavigationEventSpeechTest {
         rawText = busInfo?.raw.orEmpty(),
         busInfo = busInfo,
         timestampMillis = 0L,
+    )
+
+    private fun nearBoardExit(minutes: Int, cars: String) = NavigationEvent(
+        source = NavigationEventSource.NAVER,
+        type = NavigationEventType.TRANSIT,
+        notificationId = 0,
+        channel = NaverMapsTransit.CHANNEL,
+        title = "3호선 정발산역 승차",
+        action = NaverMapsTransit.QUICK_EXIT,
+        distanceMeters = null,
+        rawText = cars,
+        busInfo = NavigationBusInfo(
+            raw = "3호선 ${minutes}분 | 오금행 (11:16)",
+            arrivals = listOf(NavigationBusArrival("3호선", "${minutes}분")),
+        ),
+        timestampMillis = 0L,
+        landmark = "마두역 방면",
     )
 
     companion object {

@@ -79,6 +79,10 @@ class NavigationEventSpeaker(
             flushNextTrain()
             return
         }
+        if (synchronized(lock) { gate.noteAlightThenTransfer(event.title, event.action) }) {
+            Log.i(NaverMapNotification.TAG, "[NAVER_TRANSFER_SUBWAY] pending first subway ETA")
+            return
+        }
         if (event.action == NaverMapsTransit.TRANSFER_WALK_ACTION ||
             event.action == NaverMapsTransit.BOARD_DIRECTION_ACTION
         ) {
@@ -114,20 +118,15 @@ class NavigationEventSpeaker(
             speak(line)
             return
         }
+        // Observation tier: the car numbers already ride on the transfer wait line, and
+        // this separate cue has never spoken on a device. Log it, do not speak it.
+        // Promotion needs field evidence + a protection test (constitution 8-2).
         if (isNaverSubwayCar(event)) {
-            if (!NaverNearBoardNotice.isArmed()) {
-                NaverNearBoardNotice.holdCar(event)
-                Log.i(
-                    NaverMapNotification.TAG,
-                    "[NAVER_SUBWAY_CAR] hold until near board " +
-                        "dir=${event.landmark.orEmpty()} cars=${event.rawText}",
-                )
-                return
-            }
-            val line = NavigationEventSpeech.line(event) ?: return
-            val accepted = synchronized(lock) { gate.accept(event) }
-            if (!accepted) return
-            speak(line)
+            Log.i(
+                NaverMapNotification.TAG,
+                "[NAVER_SUBWAY_CAR] observed only " +
+                    "dir=${event.landmark.orEmpty()} cars=${event.rawText}",
+            )
             return
         }
         // Subway 10/5/2/곧 from 302 clocks — bypass bus wait tracker.
@@ -136,17 +135,30 @@ class NavigationEventSpeaker(
         ) {
             val arrival = event.busInfo?.arrivals?.firstOrNull()
             val subwayLine = arrival?.line.orEmpty()
-            if (!naverBusWait.allowsSubwayLine(subwayLine)) {
+            if (!NaverSubwayPin.allows(subwayLine)) {
                 Log.i(
                     NaverMapNotification.TAG,
                     "[NAVER_SUBWAY_STAGE] skip unpinned line=$subwayLine " +
-                        "pin=${naverBusWait.pinnedSubwayLine().orEmpty()} " +
+                        "pin=${NaverSubwayPin.pinned().orEmpty()} " +
                         "eta=${arrival?.eta.orEmpty()}",
                 )
                 return
             }
             speakNextTrainOnce(event)
             val line = NavigationEventSpeech.line(event) ?: return
+            val transferBrief = synchronized(lock) { gate.acceptTransferSubwayBrief(event) }
+            if (transferBrief) {
+                val detailed = NavigationEventSpeech.line(event, includeFastAlight = true) ?: line
+                Log.i(NaverMapNotification.TAG, "[NAVER_TRANSFER_SUBWAY] speak $detailed")
+                speak(detailed)
+                return
+            }
+            val brief = synchronized(lock) { gate.acceptNaverSubwayWalkBrief(event) }
+            if (brief) {
+                Log.i(NaverMapNotification.TAG, "[NAVER_SUBWAY_BRIEF] speak $line")
+                speak(line)
+                return
+            }
             val accepted = synchronized(lock) { gate.accept(event) }
             if (!accepted) {
                 Log.i(
@@ -187,7 +199,7 @@ class NavigationEventSpeaker(
     }
 
     private fun speakNextTrainOnce(@Suppress("UNUSED_PARAMETER") event: NavigationEvent) {
-        // Next train is on the wait line until 승차역 부근. Do not speak it alone.
+        // The next train rides on the wait line itself. There is no separate cue.
     }
 
     private fun flushNextTrain() {
@@ -202,18 +214,8 @@ class NavigationEventSpeaker(
     }
 
     private fun pinFromTripStart(event: NavigationEvent) {
-        val line = event.busInfo?.arrivals?.firstOrNull()?.line?.trim().orEmpty()
-        if (line.isEmpty()) return
-        when (event.rawText) {
-            NaverMapsTransit.KIND_SUBWAY -> {
-                naverBusWait.pinSubwayLine(line)
-                Log.i(NaverMapNotification.TAG, "[NAVER_PIN] subway=$line")
-            }
-            else -> {
-                naverBusWait.pinBusLine(line)
-                Log.i(NaverMapNotification.TAG, "[NAVER_PIN] bus seed=$line")
-            }
-        }
+        val pinned = NaverTripPin.apply(event, naverBusWait) ?: return
+        Log.i(NaverMapNotification.TAG, "[NAVER_PIN] $pinned")
     }
 
     private fun pinFromBoardDirection(event: NavigationEvent) {

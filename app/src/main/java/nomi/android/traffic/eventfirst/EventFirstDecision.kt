@@ -24,8 +24,11 @@ internal data class EventFirstDecision(
         /** `길안내를 시작합니다.` is not repeated back; the next wait event briefs. */
         SILENCE_GUIDANCE_START,
 
-        /** `길안내를 종료합니다.` drops the whole Event-First state. */
+        /** `길안내를 종료합니다.` closes wait cues until the next start. */
         SILENCE_GUIDANCE_END,
+
+        /** A wait 302 arrived after guidance ended, before the next start. */
+        SILENCE_WAIT_AFTER_END,
 
         /** Aboard. Wait cues for this scope are over. */
         SILENCE_RIDING,

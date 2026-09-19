@@ -26,8 +26,8 @@ class NaverBusWaitTracker(
     private var sheetOwns = false
     private var lastSheetAtMs = 0L
     private var lastTarget: NavigationBusArrival? = null
-    private var pinnedSubwayLine: String? = null
-    private var busClosedForSubwayTrip = false
+    /** Bus-side latch. The subway line itself belongs to [NaverSubwayPin]. */
+    private var closedForSubwayTrip = false
     private var boardStop: String? = null
     private var boardStopLocked = false
 
@@ -36,8 +36,6 @@ class NaverBusWaitTracker(
     fun pinnedBusLine(): String? = synchronized(lock) { core.pinnedLines().firstOrNull() }
 
     fun pinnedBusLines(): Set<String> = synchronized(lock) { core.pinnedLines() }
-
-    fun pinnedSubwayLine(): String? = synchronized(lock) { pinnedSubwayLine }
 
     fun core(): BusWaitCore = core
 
@@ -56,30 +54,22 @@ class NaverBusWaitTracker(
     }
 
     /**
-     * The trip boards a subway first, so bus wait stays shut until a transfer
-     * names the bus to ride ([pinBusLine]).
+     * The trip boards a subway first, so the bus wait shuts itself until a
+     * transfer names the bus to ride ([pinBusLine]). Only the owner of the
+     * ladder may clear it — a subway pin cannot reach in (8-2).
      */
-    fun pinSubwayLine(line: String) {
-        val normalized = line.trim()
-        if (normalized.isEmpty()) return
+    fun closeForSubwayTrip() {
         synchronized(lock) {
-            pinnedSubwayLine = normalized
-            if (!busClosedForSubwayTrip) {
-                busClosedForSubwayTrip = true
-                core.leave()
-                boardStop = null
-                boardStopLocked = false
-                lastTarget = null
-            }
+            if (closedForSubwayTrip) return
+            closedForSubwayTrip = true
+            core.leave()
+            boardStop = null
+            boardStopLocked = false
+            lastTarget = null
         }
     }
 
-    fun isBusClosedForSubwayTrip(): Boolean = synchronized(lock) { busClosedForSubwayTrip }
-
-    fun allowsSubwayLine(line: String): Boolean = synchronized(lock) {
-        val pin = pinnedSubwayLine ?: return true
-        return pin == line.trim()
-    }
+    fun isClosedForSubwayTrip(): Boolean = synchronized(lock) { closedForSubwayTrip }
 
     fun onSheet(
         arrivals: List<NavigationBusArrival>,
@@ -131,7 +121,7 @@ class NaverBusWaitTracker(
 
     private fun openBusForThisStop() {
         sheetOwns = false
-        busClosedForSubwayTrip = false
+        closedForSubwayTrip = false
         boardStop = null
         boardStopLocked = false
     }
@@ -150,8 +140,7 @@ class NaverBusWaitTracker(
             sheetOwns = false
             lastSheetAtMs = 0L
             lastTarget = null
-            pinnedSubwayLine = null
-            busClosedForSubwayTrip = false
+            closedForSubwayTrip = false
             boardStop = null
             boardStopLocked = false
         }
@@ -180,6 +169,7 @@ class NaverBusWaitTracker(
             speakStage = tick?.speakStage,
             silence = tick?.silence,
             path = tick?.path,
+            skippedStages = tick?.skippedStages ?: emptyList(),
         )
         return toSnapshot(tick)
     }

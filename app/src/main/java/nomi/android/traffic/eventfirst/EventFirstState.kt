@@ -1,9 +1,9 @@
 package nomi.android.traffic.eventfirst
 
 /**
- * Everything Event-First remembers. Four fields, all short-lived, all rebuilt
+ * Everything Event-First remembers. Five fields, all short-lived, all rebuilt
  * from the events themselves. There is deliberately no Journey id, no leg
- * index, no pin, no boardStopLocked, no busClosedForSubwayTrip and no copy of
+ * index, no pin, no boardStopLocked, no closedForSubwayTrip and no copy of
  * NaverTripStartSession — an event that describes the current situation is
  * trusted instead of re-derived.
  *
@@ -14,6 +14,12 @@ internal data class EventFirstState(
     val spokenKeys: Map<String, Set<Mark>> = emptyMap(),
     val lastSpokenAtMs: Long? = null,
     val pending: Pending? = null,
+    /**
+     * Guidance ended. WaitBus / WaitTrain stay silent until the next
+     * [NaverTransitEvent.GuidanceStart] lifts this, so a leftover 302 cannot
+     * brief as if a new trip had begun.
+     */
+    val awaitingStart: Boolean = false,
 ) {
 
     /**

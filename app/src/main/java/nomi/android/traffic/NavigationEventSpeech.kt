@@ -5,7 +5,8 @@ import nomi.product.nav.NavigationEventSource
 import nomi.product.nav.NavigationEventType
 
 /**
- * Turns a [NavigationEvent] into a fixed Korean line. No TTS, no LLM, no network.
+ * Turns a [NavigationEvent] into a fixed Korean line. No TTS, no LLM, no network,
+ * and no reads of tracker state: the same event always yields the same line.
  * Walk is out of product V1. Transit speaks a bus arrival, a Naver subway car cue,
  * a Google passage cue, a named Google bus/subway alight stop, a one-stop-before
  * prepare cue, or a one-stop alight warning.
@@ -14,15 +15,23 @@ object NavigationEventSpeech {
 
     private val etaMinutesPattern = Regex("""(\d+)\s*분""")
     private val passagePattern = Regex("""(\d+)\s*통해\s*(들어가기|나가기)""")
+    private val CAR_NUMBERS = Regex("""^\d+-\d+(?:\s*,\s*\d+-\d+)*$""")
+    private val TRAIN_BOUND = Regex("""([^,\s()]+행)""")
+    private val TRAIN_BOUND_OPEN = Regex("""([^,\s()]+행)\s*\(""")
+    private val FAST_ALIGHT_CARS =
+        Regex("""빠른\s*하차\s*:\s*(\d+-\d+(?:\s*,\s*\d+-\d+)*)""")
 
-    fun line(event: NavigationEvent): String? {
+    fun line(event: NavigationEvent, includeFastAlight: Boolean = false): String? {
         return when (event.type) {
             NavigationEventType.WALK -> null
-            NavigationEventType.TRANSIT -> transitLine(event)
+            NavigationEventType.TRANSIT -> transitLine(event, includeFastAlight)
         }
     }
 
-    private fun transitLine(event: NavigationEvent): String? {
+    private fun transitLine(
+        event: NavigationEvent,
+        includeFastAlight: Boolean = false,
+    ): String? {
         naverSubwayCarLine(event)?.let { return it }
         naverTransferWalkLine(event)?.let { return it }
         naverBoardDirectionLine(event)?.let { return it }
@@ -35,9 +44,23 @@ object NavigationEventSpeech {
             return if (event.rawText == GoogleMapsTransit.KIND_SUBWAY ||
                 event.rawText == NaverMapsTransit.KIND_SUBWAY
             ) {
-                val head = subwayArrivalLine(first.line, first.eta) ?: return null
+                val head = subwayArrivalLine(
+                    line = first.line,
+                    eta = first.eta,
+                    // Naver walk/brief: say the current minutes twice. Google keeps the old line.
+                    repeatCurrentMinutes = event.source == NavigationEventSource.NAVER,
+                    bound = if (event.source == NavigationEventSource.NAVER) {
+                        currentTrainBound(event)
+                    } else {
+                        null
+                    },
+                ) ?: return null
                 if (event.source != NavigationEventSource.NAVER) head
-                else appendWalkNextVehicle(event, head)
+                else appendFastAlight(
+                    event,
+                    appendWalkNextVehicle(event, head),
+                    includeFastAlight,
+                )
             } else {
                 val head = busArrivalLine(
                     first.line,
@@ -134,10 +157,12 @@ object NavigationEventSpeech {
         return naverNextVehicleLine(event, forBriefing = true)
     }
 
-    /** While walking to the stop, each wait cue also names the next vehicle. */
+    /**
+     * Every wait cue names the next vehicle — one phase, no arrival condition.
+     * @see docs/BUS_WAIT_CONSTITUTION.md revision 2026-09-18
+     */
     private fun appendWalkNextVehicle(event: NavigationEvent, head: String): String {
         if (event.source != NavigationEventSource.NAVER) return head
-        if (NaverNearBoardNotice.isArmed()) return head
         val next = naverNextVehicleLine(event, forBriefing = true) ?: return head
         return "$head $next"
     }
@@ -194,11 +219,44 @@ object NavigationEventSpeech {
         }
     }
 
-    private fun subwayArrivalLine(line: String, eta: String): String? {
+    private fun subwayArrivalLine(
+        line: String,
+        eta: String,
+        repeatCurrentMinutes: Boolean = false,
+        bound: String? = null,
+    ): String? {
         if (isSoonEta(eta) || isOneMinute(eta)) return "${line}, 곧 출발합니다."
         val minutes = etaMinutesPattern.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
         if (minutes < 1) return null
-        return "${subwaySubject(line)} ${minutes}분 후 출발해요."
+        val subject = subwayWaitSubject(line, bound)
+        // Naver repeats the minutes, Google keeps its own line. Nothing else may flip this.
+        if (repeatCurrentMinutes) {
+            return "$subject ${minutes}분, ${minutes}분 후 도착합니다."
+        }
+        return "$subject ${minutes}분 후 출발해요."
+    }
+
+    /** First `오금행 (` in the 302 body is this train. No 행 → keep `3호선이`. */
+    private fun currentTrainBound(event: NavigationEvent): String? =
+        TRAIN_BOUND_OPEN.find(event.busInfo?.raw.orEmpty())?.groupValues?.get(1)?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+    private fun subwayWaitSubject(line: String, bound: String?): String {
+        val headsign = bound?.trim().orEmpty()
+        if (headsign.isEmpty()) return subwaySubject(line)
+        return "$line $headsign 열차가"
+    }
+
+    private fun appendFastAlight(
+        event: NavigationEvent,
+        head: String,
+        includeFastAlight: Boolean,
+    ): String {
+        if (!includeFastAlight) return head
+        val cars = FAST_ALIGHT_CARS.find(event.busInfo?.raw.orEmpty())?.groupValues?.get(1)?.trim()
+            .orEmpty()
+        if (cars.isEmpty()) return head
+        return "$head 빠른 하차는 ${cars}번입니다."
     }
 
     private fun googleBoardDirectionLine(event: NavigationEvent): String? {
@@ -247,6 +305,7 @@ object NavigationEventSpeech {
 
     private fun naverSubwayCarLine(event: NavigationEvent): String? {
         if (event.source != NavigationEventSource.NAVER) return null
+        repeatedNearBoardExitLine(event)?.let { return it }
         val direction = event.landmark?.trim().orEmpty()
         if (direction.isEmpty() || !direction.endsWith("방면")) return null
         val cars = spokenCars(event.rawText.trim())
@@ -258,6 +317,26 @@ object NavigationEventSpeech {
             NaverMapsTransit.QUICK_TRANSFER -> "${head}${direction}입니다. 빠른 환승은 ${cars}입니다."
             else -> null
         }
+    }
+
+    /**
+     * Near-board 빠른 하차 with a numeric wait: say the minutes twice.
+     * `곧` stays on the existing car / wait sentences.
+     */
+    private fun repeatedNearBoardExitLine(event: NavigationEvent): String? {
+        if (event.action != NaverMapsTransit.QUICK_EXIT) return null
+        val cars = event.rawText.trim()
+        if (!CAR_NUMBERS.matches(cars)) return null
+        val first = event.busInfo?.arrivals?.firstOrNull() ?: return null
+        val line = first.line.trim()
+        if (line.isEmpty()) return null
+        if (isSoonEta(first.eta) || isOneMinute(first.eta)) return null
+        val minutes = etaMinutesPattern.find(first.eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+        if (minutes < 1) return null
+        val bound = TRAIN_BOUND.find(event.busInfo?.raw.orEmpty())?.groupValues?.get(1)?.trim()
+            ?: event.landmark?.trim()?.takeIf { it.endsWith("행") && !it.endsWith("방면") }
+            ?: return null
+        return "${line} ${bound} 열차가 ${minutes}분, ${minutes}분 후 도착합니다. 빠른 하차는 ${cars}번입니다."
     }
 
     private fun spokenCars(raw: String): String =

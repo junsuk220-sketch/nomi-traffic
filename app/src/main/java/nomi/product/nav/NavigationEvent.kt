@@ -24,6 +24,10 @@ data class NavigationBusArrival(
 data class NavigationBusInfo(
     val raw: String,
     val arrivals: List<NavigationBusArrival> = emptyList(),
+    /** Naver subway 302 clocks, in board order. Empty when the board is relative-only. */
+    val clocks: List<String> = emptyList(),
+    /** True when the 302 wait row is `(도착)`, not `(곧 도착)`. */
+    val arrived: Boolean = false,
 )
 
 data class NavigationEvent(

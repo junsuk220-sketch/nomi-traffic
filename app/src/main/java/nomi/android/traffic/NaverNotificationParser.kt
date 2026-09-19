@@ -85,16 +85,19 @@ object NaverNotificationParser {
             snapshot.chip,
         ).firstOrNull { !it.isNullOrBlank() && busArrivalPattern.containsMatchIn(it) }
         val subwayInfo = if (busRaw == null) {
-            NaverSubwayNotificationEta.parse(
-                title = title,
-                text = listOf(
-                    snapshot.text,
-                    snapshot.secondary,
-                    snapshot.nowbarSecondary,
-                    snapshot.bigText,
-                ).firstOrNull { !it.isNullOrBlank() },
-                nowMillis = now,
-            )
+            listOf(
+                snapshot.text,
+                snapshot.secondary,
+                snapshot.nowbarSecondary,
+                snapshot.bigText,
+            ).firstNotNullOfOrNull { field ->
+                if (field.isNullOrBlank()) null
+                else NaverSubwayNotificationEta.parse(
+                    title = title,
+                    text = field,
+                    nowMillis = now,
+                )
+            }
         } else {
             null
         }

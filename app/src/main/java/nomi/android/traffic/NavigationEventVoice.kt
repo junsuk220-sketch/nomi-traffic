@@ -61,32 +61,52 @@ object NavigationEventVoice {
         synchronized(lock) { naverBusWait.releaseSheetOwnership() }
     }
 
+    /**
+     * A new Naver guidance began. Every owner that a new trip invalidates clears
+     * itself here. Callers announce the transition; they do not list the owners —
+     * adding a cue means editing this one function, not hunting reset calls.
+     * The bus pin survives: the itinerary is re-seeded, not rebuilt.
+     */
+    fun onNaverGuidanceStarted() {
+        synchronized(lock) {
+            gate.resetNaverJourneyCues()
+        }
+        NaverNearBoardNotice.reset()
+        NaverNextTrainNotice.reset()
+        NaverPrepareAlight.reset()
+    }
+
     /** Guidance ended. Clear pin so the next trip must seed again. */
-    fun leaveNaverWaitSheet() {
-        synchronized(lock) { naverBusWait.leave() }
+    fun onNaverGuidanceEnded() {
+        synchronized(lock) {
+            naverBusWait.leave()
+            gate.resetTransferSubwayBrief()
+            gate.resetNaverTripStart()
+            gate.resetNaverPrepareAlight()
+        }
         NaverNextTrainNotice.reset()
         NaverNearBoardNotice.reset()
-        resetNaverTripStart()
-        resetNaverPrepareAlight()
+        NaverPrepareAlight.reset()
+        NaverSubwayPin.reset()
         Log.i(NaverMapNotification.TAG, "[NAVER_PIN] cleared — guidance ended")
+    }
+
+    /**
+     * The 안내 중 label left the screen without ending. Pin stays — 302 keeps
+     * driving 10/5/2/곧, so nothing here may touch the bus stage set.
+     */
+    fun onNaverGuidanceOffScreen() {
+        synchronized(lock) {
+            gate.resetNaverTransferCues()
+            naverBusWait.releaseSheetOwnership()
+        }
+        NaverNearBoardNotice.reset()
     }
 
     /** Pin itinerary line from preview/live trip-start before bus rows can speak. */
     fun pinNaverFromTripEvent(event: NavigationEvent) {
-        val line = event.busInfo?.arrivals?.firstOrNull()?.line?.trim().orEmpty()
-        if (line.isEmpty()) return
-        synchronized(lock) {
-            when (event.rawText) {
-                NaverMapsTransit.KIND_SUBWAY -> {
-                    naverBusWait.pinSubwayLine(line)
-                    Log.i(NaverMapNotification.TAG, "[NAVER_PIN] subway=$line")
-                }
-                else -> {
-                    naverBusWait.pinBusLine(line)
-                    Log.i(NaverMapNotification.TAG, "[NAVER_PIN] bus seed=$line")
-                }
-            }
-        }
+        val pinned = synchronized(lock) { NaverTripPin.apply(event, naverBusWait) } ?: return
+        Log.i(NaverMapNotification.TAG, "[NAVER_PIN] $pinned")
     }
 
     fun pinNaverFromTripCache() {
@@ -119,24 +139,11 @@ object NavigationEventVoice {
         }
     }
 
+    /** The start button was pressed: the briefing may speak again. One owner. */
     fun resetNaverTripStart() {
         synchronized(lock) {
             gate.resetNaverTripStart()
         }
-    }
-
-    fun resetNaverTransferCues() {
-        synchronized(lock) {
-            gate.resetNaverTransferCues()
-        }
-        NaverNearBoardNotice.reset()
-    }
-
-    fun resetNaverPrepareAlight() {
-        synchronized(lock) {
-            gate.resetNaverPrepareAlight()
-        }
-        NaverPrepareAlight.reset()
     }
 
     fun noteNaverAlightStop(raw: String?) {
@@ -164,23 +171,10 @@ object NavigationEventVoice {
         speaker(context).offer(event)
     }
 
+    /** Observation tier: the signal is recorded and nothing else happens (8-1). */
     fun noteNaverNearBoard(raw: String?) {
         if (!NaverNearBoardNotice.note(raw)) return
-        Log.i(NaverMapNotification.TAG, "[NAVER_NEAR_BOARD] armed raw=${raw?.trim().orEmpty()}")
-        val pending = NaverNearBoardNotice.takePendingCar() ?: return
-        offerPendingCar(pending)
-    }
-
-    private fun offerPendingCar(event: NavigationEvent) {
-        val context = appContext ?: return
-        speaker(context).offer(event)
-    }
-
-    fun resetNaverSubwayStages() {
-        synchronized(lock) {
-            gate.resetNaverSubwayStages()
-        }
-        NaverNextTrainNotice.reset()
+        Log.i(NaverMapNotification.TAG, "[NAVER_NEAR_BOARD] observed raw=${raw?.trim().orEmpty()}")
     }
 
     fun armNaverTripStart() {

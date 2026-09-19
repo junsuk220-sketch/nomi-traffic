@@ -81,14 +81,12 @@ internal object EventFirstPolicy {
 
     /**
      * Speaking a stage also consumes the coarser ones, so a later 10분 reading
-     * cannot re-open a ladder we already walked past. Mirrors
-     * BusWaitCore.acceptStage, applied to [EventFirstState.spokenKeys].
+     * cannot re-open a ladder we already walked past. The rule itself lives in
+     * BusWaitCore; here it is only mapped onto [EventFirstState.spokenKeys].
      */
     fun marksConsumedBy(stage: Int): Set<EventFirstState.Mark> {
         val marks = mutableSetOf(markForStage(stage))
-        listOf(10, 5, 2).forEach { coarser ->
-            if (coarser > stage) marks += markForStage(coarser)
-        }
+        BusWaitCore.coarserStages(stage).forEach { marks += markForStage(it) }
         return marks
     }
 }
