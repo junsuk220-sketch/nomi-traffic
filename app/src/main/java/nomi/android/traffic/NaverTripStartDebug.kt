@@ -25,10 +25,7 @@ internal object NaverTripStartDebug {
         session: String,
         due: Boolean,
     ) {
-        Log.i(
-            TAG,
-            "[TRIP_DEBUG] STEP1 session how=$how armed=$armed $session due=$due build=$BUILD",
-        )
+        emit("[TRIP_DEBUG] STEP1 session how=$how armed=$armed $session due=$due build=$BUILD")
     }
 
     fun step2(
@@ -52,8 +49,7 @@ internal object NaverTripStartDebug {
         ).joinToString("|")
         if (key == lastStep2Key) return
         lastStep2Key = key
-        Log.i(
-            TAG,
+        emit(
             "[TRIP_DEBUG] STEP2 decision requireLive=$requireLive live=$live " +
                 "blobs=$blobCount hasStart=$hasStart hasEnd=$hasEnd " +
                 "sliceMode=$sliceMode scoped=$scopedCount " +
@@ -78,8 +74,7 @@ internal object NaverTripStartDebug {
         ).joinToString("|")
         if (key == lastStep3Key) return
         lastStep3Key = key
-        Log.i(
-            TAG,
+        emit(
             "[TRIP_DEBUG] STEP3 tripEvent due=$due decision=$decision " +
                 "fromSpeak=$fromSpeak cacheHit=$cacheHit tripNull=$tripNull " +
                 "action=$action raw=$raw spokenAlready=$spokenAlready giveUp=$giveUp " +
@@ -88,8 +83,7 @@ internal object NaverTripStartDebug {
     }
 
     fun step4(action: String, raw: String, isTripStart: Boolean) {
-        Log.i(
-            TAG,
+        emit(
             "[TRIP_DEBUG] STEP4 voiceOffer action=$action raw=$raw " +
                 "isTripStart=$isTripStart build=$BUILD",
         )
@@ -103,8 +97,7 @@ internal object NaverTripStartDebug {
         accepted: Boolean,
         drop: String?,
     ) {
-        Log.i(
-            TAG,
+        emit(
             "[TRIP_DEBUG] STEP5 speaker action=$action promoted=$promoted " +
                 "lineNull=$lineNull line=[$line] accepted=$accepted " +
                 "drop=${drop.orEmpty()} build=$BUILD",
@@ -112,14 +105,18 @@ internal object NaverTripStartDebug {
     }
 
     fun step6(text: String, path: String) {
-        Log.i(
-            TAG,
-            "[TRIP_DEBUG] STEP6 speak path=$path text=[$text] build=$BUILD",
-        )
+        emit("[TRIP_DEBUG] STEP6 speak path=$path text=[$text] build=$BUILD")
     }
 
     fun note(msg: String) {
-        Log.i(TAG, "[TRIP_DEBUG] $msg build=$BUILD")
+        emit("[TRIP_DEBUG] $msg build=$BUILD")
+    }
+
+    private fun emit(message: String) {
+        try {
+            Log.i(TAG, message)
+        } catch (_: Throwable) {
+        }
     }
 
     fun clipBlobs(blobs: List<String>, take: Int = 4): Pair<String, String> {

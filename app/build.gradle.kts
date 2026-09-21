@@ -12,8 +12,8 @@ android {
         applicationId = "nomi.traffic"
         minSdk = 26
         targetSdk = 35
-        versionCode = 89
-        versionName = "1.0.0-scope-debug"
+        versionCode = 90
+        versionName = "1.0.0-speech-sink"
     }
 
     buildTypes {
