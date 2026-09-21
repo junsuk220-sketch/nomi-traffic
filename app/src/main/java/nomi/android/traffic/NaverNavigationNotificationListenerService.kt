@@ -7,6 +7,8 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import nomi.android.traffic.eventfirst.EventFirstEngine
+import nomi.android.traffic.observe.TransitObservation
+import nomi.android.traffic.observe.TransitObservationDebug
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
 import nomi.product.nav.NavigationEventType
@@ -23,6 +25,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         EventFirstEngine.attach(filesDir)
         NavigationEventVoice.prepare(this)
         CurrentGuidanceScopeDebug.emit("feed_attached notification")
+        TransitObservationDebug.emit("feed_attached notification")
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
 
@@ -74,6 +77,26 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val nowbarSecondary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_SECONDARY)
         val primary = extraText(extras, NaverMapNotification.EXTRA_PRIMARY)
         val chipExpandedText = chip
+        try {
+            TransitObservationDebug.emit(
+                TransitObservation.fromNotification(
+                    NaverNotificationParser.Snapshot(
+                        packageName = sbn.packageName,
+                        notificationId = sbn.id,
+                        channel = channel,
+                        title = title,
+                        text = text,
+                        action = nowbarPrimary,
+                        chip = chip,
+                        secondary = secondary,
+                        nowbarSecondary = nowbarSecondary,
+                        bigText = bigText,
+                        timestampMillis = System.currentTimeMillis(),
+                    ),
+                ),
+            )
+        } catch (_: Throwable) {
+        }
         NaverRideObservationLog.recordNotification(
             ts = System.currentTimeMillis(),
             pkg = sbn.packageName,

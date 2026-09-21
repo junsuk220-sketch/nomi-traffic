@@ -7,6 +7,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.android.traffic.eventfirst.NaverA11yGuidanceEnd
+import nomi.android.traffic.observe.TransitObservation
+import nomi.android.traffic.observe.TransitObservationDebug
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
 
@@ -210,6 +212,12 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 CurrentGuidanceScope.onScreen(screenBlobs)
             } catch (_: Throwable) {
             }
+            try {
+                TransitObservationDebug.emit(
+                    TransitObservation.fromScreen(pkg, tree, now),
+                )
+            } catch (_: Throwable) {
+            }
             NaverRideObservationLog.recordA11yTree(
                 ts = now,
                 pkg = pkg,
@@ -322,6 +330,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         Log.i(NaverMapsTransit.TAG, "service connected")
         NaverTripStartDebug.note("service_connected ${NaverTripStartDebug.buildMark()}")
         CurrentGuidanceScopeDebug.emit("feed_attached a11y")
+        TransitObservationDebug.emit("feed_attached a11y")
     }
 
     override fun onInterrupt() = Unit
