@@ -89,6 +89,12 @@ internal object NaverTripStartSession {
 
     fun hasSpokenBriefing(): Boolean = state == State.SPOKEN
 
+    /** Read-only snapshot for field trip-start tracing. */
+    fun debugSnapshot(nowMs: Long = System.currentTimeMillis()): String =
+        "state=$state readyAt=$readyAtMs holdUntil=$holdBusUntilMs " +
+            "notLiveSince=$notLiveSinceMs lastWin=$lastLiveWindowId " +
+            "due=${due(nowMs)} spoken=${state == State.SPOKEN}"
+
     fun markSpoken(nowMs: Long) {
         state = State.SPOKEN
         holdBusUntilMs = nowMs + BUS_HOLD_AFTER_SPEAK_MS

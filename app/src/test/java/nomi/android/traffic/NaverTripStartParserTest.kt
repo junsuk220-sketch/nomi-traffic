@@ -64,6 +64,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "3호선 정발산역 승차"),
                     NaverSubwayAccessibilityParser.Node(text = clock),
                     NaverSubwayAccessibilityParser.Node(text = "오금행"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             timestampMillis = now,
@@ -102,6 +103,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "19:53"),
                     NaverSubwayAccessibilityParser.Node(text = "20분"),
                     NaverSubwayAccessibilityParser.Node(text = "대화행"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             timestampMillis = now,
@@ -136,6 +138,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "대화역 3호선까지 걷기"),
                     NaverSubwayAccessibilityParser.Node(text = "19:46"),
                     NaverSubwayAccessibilityParser.Node(text = "19:53"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             timestampMillis = now,
@@ -164,6 +167,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "7분"),
                     NaverSubwayAccessibilityParser.Node(text = "5정류장"),
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
         )
@@ -208,6 +212,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "5분"),
                     NaverSubwayAccessibilityParser.Node(text = "3정류장"),
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
         )
@@ -237,6 +242,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "5분"),
                     NaverSubwayAccessibilityParser.Node(text = "4정류장"),
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
         )
@@ -262,6 +268,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "3정류장"),
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
                     NaverSubwayAccessibilityParser.Node(text = "3호선 정발산역 승차"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
         )
@@ -283,6 +290,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "17:10"),
                     NaverSubwayAccessibilityParser.Node(text = "81"),
                     NaverSubwayAccessibilityParser.Node(text = "4분"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             timestampMillis = Calendar.getInstance().apply {
@@ -310,6 +318,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
                     NaverSubwayAccessibilityParser.Node(text = "66"),
                     NaverSubwayAccessibilityParser.Node(text = "7분"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
         )
@@ -337,6 +346,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "88B"),
                     NaverSubwayAccessibilityParser.Node(text = "9분"),
                     NaverSubwayAccessibilityParser.Node(text = "4정류장"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             requireLive = true,
@@ -370,6 +380,7 @@ class NaverTripStartParserTest {
                     NaverSubwayAccessibilityParser.Node(text = "11분"),
                     NaverSubwayAccessibilityParser.Node(text = "6정류장"),
                     NaverSubwayAccessibilityParser.Node(text = "여유"),
+                    NaverSubwayAccessibilityParser.Node(text = "안내 종료"),
                 ),
             ),
             requireLive = true,
@@ -382,6 +393,264 @@ class NaverTripStartParserTest {
         assertEquals(
             "88B번, 88B번 버스가 5분 후 도착합니다. 정류장까지는 걸어서 약 5분입니다. 다음은 88B번, 11분 후 도착입니다.",
             NavigationEventSpeech.line(event),
+        )
+    }
+
+    @Test
+    fun `bus without eta does not promote the next subway journey`() {
+        val decision = noEtaBusThenSubway()
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_BUS, event.rawText)
+        assertEquals("1000", event.busInfo!!.arrivals[0].line)
+        assertEquals("", event.busInfo!!.arrivals[0].eta)
+        assertEquals(1, event.busInfo!!.arrivals.size)
+        assertEquals(
+            "1000번 버스 도착 예정 정보가 없습니다.",
+            NavigationEventSpeech.line(event),
+        )
+        assertTrue(NavigationEventSpeechGate().accept(event))
+    }
+
+    @Test
+    fun `bus without eta does not promote a later bus on the same sheet`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = node(
+                "안내 중",
+                "도보 약 3분",
+                "1000",
+                "도착 예정 정보 없음",
+                "81",
+                "5분",
+                "3정류장",
+                "여유",
+            ),
+        )
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_BUS, event.rawText)
+        assertEquals("1000", event.busInfo!!.arrivals[0].line)
+        assertEquals("", event.busInfo!!.arrivals[0].eta)
+        assertEquals(
+            "1000번 버스 도착 예정 정보가 없습니다.",
+            NavigationEventSpeech.line(event),
+        )
+    }
+
+    @Test
+    fun `later bus eta still uses the wait ladder after a no-eta briefing`() {
+        val briefing = (noEtaBusThenSubway() as NaverTripStartParser.Decision.Speak).event
+        assertTrue(NavigationEventSpeechGate().accept(briefing))
+        val core = nomi.android.traffic.buswait.BusWaitCore()
+        core.seed("1000")
+        val tick = core.observe(
+            listOf(nomi.product.nav.NavigationBusArrival("1000", "9분")),
+            nowMs = 1_000L,
+        )!!
+        assertEquals(10, tick.speakStage)
+    }
+
+    @Test
+    fun `subway wait brief still works after a no-eta bus trip start`() {
+        val gate = NavigationEventSpeechGate()
+        val briefing = (noEtaBusThenSubway() as NaverTripStartParser.Decision.Speak).event
+        assertTrue(gate.accept(briefing))
+        val subway = nomi.product.nav.NavigationEvent(
+            source = nomi.product.nav.NavigationEventSource.NAVER,
+            type = nomi.product.nav.NavigationEventType.TRANSIT,
+            notificationId = 301,
+            channel = "302_PUBTRANS_POPUP",
+            title = "정발산역 3호선 도보 후 열차 승차",
+            action = "정발산역 3호선 도보 후 열차 승차",
+            distanceMeters = null,
+            rawText = NaverMapsTransit.KIND_SUBWAY,
+            busInfo = nomi.product.nav.NavigationBusInfo(
+                raw = "3호선 6분 | 오금행 (15:20)",
+                arrivals = listOf(nomi.product.nav.NavigationBusArrival("3호선", "6분")),
+            ),
+            timestampMillis = 0L,
+        )
+        assertTrue(gate.acceptNaverSubwayWalkBrief(subway))
+    }
+
+    @Test
+    fun `subway without eta does not promote the next bus journey`() {
+        val event = (noEtaSubwayThenBus() as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+        assertEquals("", event.busInfo!!.arrivals[0].eta)
+        assertEquals(1, event.busInfo!!.arrivals.size)
+        assertEquals(
+            "3호선 오금행 열차 도착 예정 정보가 없습니다.",
+            NavigationEventSpeech.line(event),
+        )
+        assertTrue(NavigationEventSpeechGate().accept(event))
+    }
+
+    @Test
+    fun `later subway eta still uses the wait ladder after a no-eta briefing`() {
+        val gate = NavigationEventSpeechGate()
+        val briefing = (noEtaSubwayThenBus() as NaverTripStartParser.Decision.Speak).event
+        assertTrue(gate.accept(briefing))
+        val wait = nomi.product.nav.NavigationEvent(
+            source = nomi.product.nav.NavigationEventSource.NAVER,
+            type = nomi.product.nav.NavigationEventType.TRANSIT,
+            notificationId = 301,
+            channel = "302_PUBTRANS_POPUP",
+            title = "정발산역 3호선 도보 후 열차 승차",
+            action = "정발산역 3호선 도보 후 열차 승차",
+            distanceMeters = null,
+            rawText = NaverMapsTransit.KIND_SUBWAY,
+            busInfo = nomi.product.nav.NavigationBusInfo(
+                raw = "3호선 9분 | 오금행 (15:20)",
+                arrivals = listOf(nomi.product.nav.NavigationBusArrival("3호선", "9분")),
+            ),
+            timestampMillis = 0L,
+        )
+        assertTrue(gate.accept(wait))
+        assertTrue(gate.accept(wait.copy(
+            busInfo = wait.busInfo!!.copy(
+                arrivals = listOf(nomi.product.nav.NavigationBusArrival("3호선", "5분")),
+            ),
+        )))
+        assertTrue(gate.accept(wait.copy(
+            busInfo = wait.busInfo!!.copy(
+                arrivals = listOf(nomi.product.nav.NavigationBusArrival("3호선", "2분")),
+            ),
+        )))
+        assertTrue(gate.accept(wait.copy(
+            busInfo = wait.busInfo!!.copy(
+                arrivals = listOf(nomi.product.nav.NavigationBusArrival("3호선", "곧")),
+            ),
+        )))
+    }
+
+    @Test
+    fun `bus wait still works after a no-eta subway trip start`() {
+        val briefing = (noEtaSubwayThenBus() as NaverTripStartParser.Decision.Speak).event
+        assertTrue(NavigationEventSpeechGate().accept(briefing))
+        val core = nomi.android.traffic.buswait.BusWaitCore()
+        core.seed("81")
+        val tick = core.observe(
+            listOf(nomi.product.nav.NavigationBusArrival("81", "4분")),
+            nowMs = 1_000L,
+        )!!
+        assertEquals(5, tick.speakStage)
+    }
+
+    @Test
+    fun `alternative bus before 안내 중 is not the trip-start pin`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = node(
+                "최소시간",
+                "53분",
+                "도보 2분, 99번 일반 버스 2분",
+                "99",
+                "2분",
+                "7정류장",
+                "여유",
+                "바로 안내시작",
+                "안내 중",
+                "55분",
+                "도보 약 11분",
+                "3호선",
+                "오금행",
+                "안내 종료",
+            ),
+            timestampMillis = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 15)
+                set(Calendar.MINUTE, 39)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis,
+            requireLive = true,
+        )
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+        assertTrue(event.busInfo!!.arrivals.none { it.line == "99" })
+    }
+
+    @Test
+    fun `live snapshot without 안내 종료 still briefs from 안내 중 onward`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "안내 중",
+                    "도보 약 11분",
+                    "3호선",
+                    "오금행",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+            requireLive = true,
+        )
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.TRIP_START_ACTION, event.action)
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+    }
+
+    @Test
+    fun `live without 안내 중 stays pending`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "도보 약 11분",
+                    "3호선",
+                    "오금행",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+            requireLive = true,
+        )
+        assertEquals(NaverTripStartParser.Decision.Pending, decision)
+    }
+
+    private fun noEtaSubwayThenBus() = NaverTripStartParser.decision(
+        packageName = NaverMapNotification.PACKAGE,
+        root = node(
+            "안내 중",
+            "도보 약 3분",
+            "3호선 정발산역 승차",
+            "오금행",
+            "도착 예정 정보 없음",
+            "81",
+            "5분",
+            "3정류장",
+            "여유",
+        ),
+    )
+
+    private fun noEtaBusThenSubway() = NaverTripStartParser.decision(
+        packageName = NaverMapNotification.PACKAGE,
+        root = node(
+            "안내 중",
+            "도보 약 4분",
+            "1000",
+            "도착 예정 정보 없음",
+            "3호선 정발산역 승차",
+            "15:20",
+            "오금행",
+        ),
+        timestampMillis = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 15)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis,
+    )
+
+    private fun node(vararg texts: String): NaverSubwayAccessibilityParser.Node {
+        val blobs = texts.toList().let { list ->
+            if (list.any { it == "안내 중" } && list.none { it == "안내 종료" || it == "안내종료" }) {
+                list + "안내 종료"
+            } else {
+                list
+            }
+        }
+        return NaverSubwayAccessibilityParser.Node(
+            children = blobs.map { NaverSubwayAccessibilityParser.Node(text = it) },
         )
     }
 }

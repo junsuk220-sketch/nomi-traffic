@@ -89,7 +89,7 @@ class NaverTransferSubwayBriefTest {
         val first = parseTodayBoard()
         assertEquals(NaverMapsTransit.KIND_SUBWAY, first.rawText)
         assertTrue(first.busInfo!!.arrivals.isNotEmpty())
-        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(first))
+        assertEquals("3호선, 곧 도착합니다.", NavigationEventSpeech.line(first))
         assertTrue(gate.acceptTransferSubwayBrief(first))
         assertFalse(gate.isTransferSubwayBriefPending())
     }
@@ -131,7 +131,7 @@ class NaverTransferSubwayBriefTest {
         gate.noteAlightThenTransfer("이번 정류장에서 하차 후 환승", null)
         val both = subwayMinutes(current = 5, next = 14)
         assertEquals(
-            "3호선이 5분, 5분 후 도착합니다. 다음 열차는 14분 후 도착입니다.",
+            "3호선이 5분 후 도착합니다. 다음 열차는 14분 후 도착입니다.",
             NavigationEventSpeech.line(both),
         )
         assertTrue(gate.acceptTransferSubwayBrief(both))
@@ -143,7 +143,7 @@ class NaverTransferSubwayBriefTest {
         val only = parseTodayBoard()
         assertEquals(1, only.busInfo!!.arrivals.size)
         val line = NavigationEventSpeech.line(only)!!
-        assertEquals("3호선, 곧 출발합니다.", line)
+        assertEquals("3호선, 곧 도착합니다.", line)
         assertFalse(line.contains("다음 열차"))
         assertTrue(gate.acceptTransferSubwayBrief(only))
     }

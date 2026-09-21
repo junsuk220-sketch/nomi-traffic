@@ -33,7 +33,7 @@ class NaverSubwayWalkBriefTest {
         )
         assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
         assertEquals("곧", event.busInfo!!.arrivals[0].eta)
-        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
+        assertEquals("3호선, 곧 도착합니다.", NavigationEventSpeech.line(event))
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))
         assertFalse(gate.accept(event))
     }
@@ -45,7 +45,7 @@ class NaverSubwayWalkBriefTest {
         assertEquals("6분", event.busInfo!!.arrivals[0].eta)
         assertEquals("13분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "3호선 오금행 열차가 6분, 6분 후 도착합니다. 다음 열차는 13분 후 도착입니다.",
+            "3호선 오금행 열차가 6분 후 도착합니다. 다음 열차는 13분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))
@@ -66,7 +66,7 @@ class NaverSubwayWalkBriefTest {
         assertEquals("13분", event.busInfo!!.arrivals[0].eta)
         assertEquals("15분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "3호선 오금행 열차가 13분, 13분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            "3호선 오금행 열차가 13분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))
@@ -74,20 +74,20 @@ class NaverSubwayWalkBriefTest {
     }
 
     @Test
-    fun `walk brief repeats five minutes and leaves the next alone`() {
+    fun `walk brief says five minutes once and leaves the next alone`() {
         val event = transitMinutesPair(5, 15)
         assertEquals(
-            "3호선이 5분, 5분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            "3호선이 5분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))
     }
 
     @Test
-    fun `walk brief repeats eleven minutes and leaves the next alone`() {
+    fun `walk brief says eleven minutes once and leaves the next alone`() {
         val event = transitMinutesPair(11, 20)
         assertEquals(
-            "3호선이 11분, 11분 후 도착합니다. 다음 열차는 20분 후 도착입니다.",
+            "3호선이 11분 후 도착합니다. 다음 열차는 20분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))

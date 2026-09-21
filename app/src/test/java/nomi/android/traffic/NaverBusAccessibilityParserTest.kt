@@ -190,7 +190,103 @@ class NaverBusAccessibilityParserTest {
         assertEquals("9분", event.busInfo!!.arrivals[1].eta)
     }
 
-    private fun board(vararg texts: String) = NaverSubwayAccessibilityParser.Node(
-        children = texts.map { NaverSubwayAccessibilityParser.Node(text = it) },
-    )
+    @Test
+    fun `alternative bus outside 안내 종료 does not enter wait arrivals`() {
+        val events = NaverBusAccessibilityParser.parse(
+            packageName = NaverMapNotification.PACKAGE,
+            root = board(
+                "안내 중",
+                "55분",
+                "3호선",
+                "안내 종료",
+                "최소시간",
+                "53분",
+                "도보 2분, 99번 일반 버스 2분, 도보 3분, 3호선 30분",
+                "99",
+                "2분",
+                "7정류장",
+                "여유",
+                "81",
+                "7분",
+                "7정류장",
+                "여유",
+                "바로 안내시작",
+            ),
+        )
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `buses inside the active slice still feed BusWaitCore`() {
+        val events = NaverBusAccessibilityParser.parse(
+            packageName = NaverMapNotification.PACKAGE,
+            root = board(
+                "안내 중",
+                "도보 162m · 2분",
+                "라페스타.먹자골목 승차",
+                "81",
+                "5분",
+                "5정류장",
+                "여유",
+                "99",
+                "6분",
+                "6정류장",
+                "여유",
+                "안내 종료",
+                "최소시간",
+                "53분",
+                "150",
+                "3분",
+                "2정류장",
+                "여유",
+                "바로 안내시작",
+            ),
+        )
+        assertEquals(1, events.size)
+        val arrivals = events[0].busInfo!!.arrivals
+        assertEquals(listOf("81", "99"), arrivals.map { it.line })
+        assertEquals(listOf("5분", "6분"), arrivals.map { it.eta })
+        val core = nomi.android.traffic.buswait.BusWaitCore()
+        core.seed("81")
+        val tick = core.observe(arrivals)!!
+        assertEquals("81", tick.target!!.line)
+        assertEquals(5, tick.speakStage)
+    }
+
+    @Test
+    fun `live sheet without 안내 종료 does not leak the full flatten`() {
+        val events = NaverBusAccessibilityParser.parse(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "안내 중",
+                    "81",
+                    "5분",
+                    "5정류장",
+                    "여유",
+                    "최소시간",
+                    "99",
+                    "2분",
+                    "7정류장",
+                    "여유",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+        )
+        assertTrue(events.isEmpty())
+    }
+
+    private fun board(vararg texts: String): NaverSubwayAccessibilityParser.Node {
+        val blobs = texts.toList().let { list ->
+            if (list.any { NaverActiveGuidanceSlice.isStart(it) } &&
+                list.none { NaverActiveGuidanceSlice.isEnd(it) }
+            ) {
+                list + NaverActiveGuidanceSlice.END
+            } else {
+                list
+            }
+        }
+        return NaverSubwayAccessibilityParser.Node(
+            children = blobs.map { NaverSubwayAccessibilityParser.Node(text = it) },
+        )
+    }
 }

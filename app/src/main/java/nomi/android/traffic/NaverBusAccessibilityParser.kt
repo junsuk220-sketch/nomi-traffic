@@ -28,10 +28,15 @@ object NaverBusAccessibilityParser {
         if (packageName != NaverMapNotification.PACKAGE) return emptyList()
         if (!NaverTransitDestinationParser.isLiveGuidance(root)) return emptyList()
         val blobs = flatten(root)
-        val arrivals = arrivalsFromRows(blobs).ifEmpty { arrivalsFromNotifyStyle(blobs) }
+        val slice = NaverActiveGuidanceSlice.from(blobs)
+        if (slice.isEmpty()) return emptyList()
+        val arrivals = arrivalsFromBlobs(slice)
         val first = arrivals.firstOrNull() ?: return emptyList()
         return listOf(busEvent(first, arrivals, timestampMillis))
     }
+
+    internal fun arrivalsFromBlobs(blobs: List<String>): List<NavigationBusArrival> =
+        arrivalsFromRows(blobs).ifEmpty { arrivalsFromNotifyStyle(blobs) }
 
     fun formatLog(event: NavigationEvent): String = buildString {
         val arrival = event.busInfo?.arrivals?.firstOrNull()

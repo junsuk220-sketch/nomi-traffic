@@ -7,6 +7,8 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import nomi.android.traffic.eventfirst.EventFirstEngine
+import nomi.android.traffic.scope.CurrentGuidanceScope
+import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
 import nomi.product.nav.NavigationEventType
 
 /**
@@ -20,6 +22,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         NaverRideObservationLog.attach(filesDir)
         EventFirstEngine.attach(filesDir)
         NavigationEventVoice.prepare(this)
+        CurrentGuidanceScopeDebug.emit("feed_attached notification")
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
 
@@ -60,6 +63,10 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val extras = sbn.notification.extras
         val title = extraText(extras, Notification.EXTRA_TITLE)
         val text = extraText(extras, Notification.EXTRA_TEXT)
+        try {
+            CurrentGuidanceScope.onNotification(title, text)
+        } catch (_: Throwable) {
+        }
         val bigText = extraText(extras, Notification.EXTRA_BIG_TEXT)
         val nowbarPrimary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_PRIMARY)
         val chip = extraText(extras, NaverMapNotification.EXTRA_CHIP)

@@ -30,7 +30,7 @@ class NaverNotificationParserTest {
         assertEquals("3분", arrivals[0].eta)
         assertEquals("21분", arrivals[1].eta)
         assertEquals(
-            "3호선 오금행 열차가 3분, 3분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
+            "3호선 오금행 열차가 3분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertEquals(
@@ -290,7 +290,7 @@ class NaverNotificationParserTest {
         assertEquals("3호선", event.busInfo!!.arrivals[0].line)
         assertEquals("5분", event.busInfo!!.arrivals[0].eta)
         assertEquals(
-            "3호선 오금행 열차가 5분, 5분 후 도착합니다.",
+            "3호선 오금행 열차가 5분 후 도착합니다.",
             NavigationEventSpeech.line(event),
         )
         val gate = NavigationEventSpeechGate()
@@ -300,6 +300,24 @@ class NaverNotificationParserTest {
         val core = nomi.android.traffic.buswait.BusWaitCore()
         core.seed("81")
         assertEquals(5, core.observe(listOf(nomi.product.nav.NavigationBusArrival("81", "5분")))!!.speakStage)
+    }
+
+    @Test
+    fun `302 정발산역 3호선 오금행 clocks still parse after a11y slice`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "정발산역 3호선까지 걷기",
+                text = "오금행 (15:49), 오금행 (16:01), 수서행 (16:13)",
+                timestampMillis = wallClock(15, 40, 50),
+            ),
+        )!!
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+        assertEquals("9분", event.busInfo!!.arrivals[0].eta)
+        assertEquals("21분", event.busInfo!!.arrivals[1].eta)
     }
 
     @Test
@@ -321,7 +339,7 @@ class NaverNotificationParserTest {
             ),
         )
         assertEquals("곧", event!!.busInfo!!.arrivals[0].eta)
-        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
+        assertEquals("3호선, 곧 도착합니다.", NavigationEventSpeech.line(event))
     }
 
     @Test
@@ -389,7 +407,7 @@ class NaverNotificationParserTest {
         assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
         assertEquals("곧", event.busInfo!!.arrivals[0].eta)
         assertEquals(1, subwayEtaMinutes(event))
-        assertEquals("3호선, 곧 출발합니다.", NavigationEventSpeech.line(event))
+        assertEquals("3호선, 곧 도착합니다.", NavigationEventSpeech.line(event))
         assertTrue(NavigationEventSpeechGate().accept(event))
     }
 

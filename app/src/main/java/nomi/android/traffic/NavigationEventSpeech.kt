@@ -47,7 +47,7 @@ object NavigationEventSpeech {
                 val head = subwayArrivalLine(
                     line = first.line,
                     eta = first.eta,
-                    // Naver walk/brief: say the current minutes twice. Google keeps the old line.
+                    // Naver wait: current ETA once with 도착합니다. Google keeps 출발해요.
                     repeatCurrentMinutes = event.source == NavigationEventSource.NAVER,
                     bound = if (event.source == NavigationEventSource.NAVER) {
                         currentTrainBound(event)
@@ -120,7 +120,16 @@ object NavigationEventSpeech {
             event.rawText == NaverMapsTransit.KIND_SUBWAY
         val vehicle = if (subway) {
             when {
-                isSoonEta(first.eta) -> "${subwaySubject(first.line)}, 곧 출발합니다."
+                first.eta.isBlank() -> {
+                    val bound = TRAIN_BOUND.find(event.busInfo?.raw.orEmpty())
+                        ?.groupValues?.get(1)?.trim().orEmpty()
+                    return if (bound.isEmpty()) {
+                        "${first.line} 열차 도착 예정 정보가 없습니다."
+                    } else {
+                        "${first.line} ${bound} 열차 도착 예정 정보가 없습니다."
+                    }
+                }
+                isSoonEta(first.eta) -> "${subwaySubject(first.line)}, 곧 도착합니다."
                 else -> {
                     val minutes = etaMinutesPattern.find(first.eta)?.groupValues?.get(1)?.toIntOrNull()
                         ?: return null
@@ -130,6 +139,8 @@ object NavigationEventSpeech {
             }
         } else {
             when {
+                first.eta.isBlank() ->
+                    return "${first.line}번 버스 도착 예정 정보가 없습니다."
                 isSoonEta(first.eta) -> "${first.line}번, ${first.line}번 버스, 곧 도착합니다."
                 else -> {
                     val minutes = etaMinutesPattern.find(first.eta)?.groupValues?.get(1)?.toIntOrNull()
@@ -225,13 +236,12 @@ object NavigationEventSpeech {
         repeatCurrentMinutes: Boolean = false,
         bound: String? = null,
     ): String? {
-        if (isSoonEta(eta) || isOneMinute(eta)) return "${line}, 곧 출발합니다."
+        if (isSoonEta(eta) || isOneMinute(eta)) return "${line}, 곧 도착합니다."
         val minutes = etaMinutesPattern.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
         if (minutes < 1) return null
         val subject = subwayWaitSubject(line, bound)
-        // Naver repeats the minutes, Google keeps its own line. Nothing else may flip this.
         if (repeatCurrentMinutes) {
-            return "$subject ${minutes}분, ${minutes}분 후 도착합니다."
+            return "$subject ${minutes}분 후 도착합니다."
         }
         return "$subject ${minutes}분 후 출발해요."
     }

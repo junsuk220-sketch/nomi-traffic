@@ -38,6 +38,15 @@ object NavigationEventVoice {
     }
 
     fun offer(context: Context, event: NavigationEvent) {
+        if (event.source == NavigationEventSource.NAVER &&
+            event.action == NaverMapsTransit.TRIP_START_ACTION
+        ) {
+            NaverTripStartDebug.step4(
+                action = event.action,
+                raw = event.busInfo?.raw.orEmpty(),
+                isTripStart = true,
+            )
+        }
         when (event.source) {
             NavigationEventSource.NAVER,
             NavigationEventSource.GOOGLE,
@@ -178,7 +187,13 @@ object NavigationEventVoice {
     }
 
     fun armNaverTripStart() {
-        NaverTripStartSession.request(System.currentTimeMillis())
+        val armed = NaverTripStartSession.request(System.currentTimeMillis())
+        NaverTripStartDebug.step1(
+            how = "302_start_phrase",
+            armed = armed,
+            session = NaverTripStartSession.debugSnapshot(),
+            due = NaverTripStartSession.due(System.currentTimeMillis()),
+        )
     }
 
     private fun syncScreenState(context: Context) {

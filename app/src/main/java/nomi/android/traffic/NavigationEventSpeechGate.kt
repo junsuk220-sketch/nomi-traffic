@@ -1,6 +1,8 @@
 package nomi.android.traffic
 
 import nomi.android.traffic.buswait.BusWaitCore
+import nomi.product.nav.NavigationBusArrival
+import nomi.product.nav.NavigationBusInfo
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
 import nomi.product.nav.NavigationEventType
@@ -32,6 +34,10 @@ class NavigationEventSpeechGate {
     private var lastSubwayClockHead: String? = null
     /** The tracked head has been seen as `(도착)`. Reset only after this. */
     private var subwayClockDeparted = false
+    /** Next HH:mm observed on a 302 clock list. Cleared on `(도착)` and journey reset. */
+    private var lastSubwayNextClock: String? = null
+    /** Line that accompanied [lastSubwayNextClock]. Empty line never remembers. */
+    private var lastSubwayNextLine: String? = null
 
     fun accept(event: NavigationEvent): Boolean {
         return when (event.type) {
@@ -61,6 +67,8 @@ class NavigationEventSpeechGate {
     private fun resetNaverSubwayClockTrack() {
         lastSubwayClockHead = null
         subwayClockDeparted = false
+        lastSubwayNextClock = null
+        lastSubwayNextLine = null
     }
 
     /** The subway ladder only. Clock-head tracking stays — a new train may reuse it. */
@@ -275,6 +283,45 @@ class NavigationEventSpeechGate {
     }
 
     /**
+     * Observe 302 clocks before Speech so a later 2분/곧 event can reuse the
+     * next HH:mm. Same owner as the departed/later-head reset.
+     */
+    fun rememberNaverSubwayClocks(event: NavigationEvent) {
+        noteNaverSubwayClocks(event)
+    }
+
+    /**
+     * If this wait has only the current ETA, attach a second arrival computed
+     * from a previously observed next HH:mm. Speech still reads the event only.
+     */
+    fun withRememberedSubwayNext(event: NavigationEvent): NavigationEvent {
+        if (event.source != NavigationEventSource.NAVER) return event
+        if (event.rawText != NaverMapsTransit.KIND_SUBWAY) return event
+        val info = event.busInfo ?: return event
+        if (info.arrived) return event
+        if (info.clocks.isNotEmpty()) return event
+        if (info.arrivals.size != 1) return event
+        if (subwayClockDeparted) return event
+        val nextClock = lastSubwayNextClock ?: return event
+        val nextLine = lastSubwayNextLine ?: return event
+        val current = info.arrivals.first()
+        if (current.line != nextLine) return event
+        val now = event.timestampMillis
+        if (now < 1_600_000_000_000L) return event
+        val minutes = NaverSubwayNotificationEta.clockMinutesUntil(nextClock, now) ?: return event
+        val nextEta = NaverSubwayNotificationEta.etaText(minutes)
+        if (nextEta == current.eta) return event
+        return event.copy(
+            busInfo = info.copy(
+                arrivals = listOf(
+                    current,
+                    NavigationBusArrival(line = nextLine, eta = nextEta),
+                ),
+            ),
+        )
+    }
+
+    /**
      * Subway next-train: reset the ladder only after `(도착)` and a later clock head.
      * Relative countdown and a clock slide without arrived do not reset.
      */
@@ -284,18 +331,38 @@ class NavigationEventSpeechGate {
         val info = event.busInfo ?: return
         if (info.arrived) {
             subwayClockDeparted = true
+            lastSubwayNextClock = null
+            lastSubwayNextLine = null
         }
         val head = info.clocks.firstOrNull() ?: return
         val previous = lastSubwayClockHead
         if (previous == null) {
             lastSubwayClockHead = head
+            if (!info.arrived) rememberSubwayNext(info)
             return
         }
         if (subwayClockDeparted && isClockLater(head, previous)) {
             resetNaverSubwayStages()
             lastSubwayClockHead = head
             subwayClockDeparted = false
+            rememberSubwayNext(info)
+            return
         }
+        if (!subwayClockDeparted) {
+            rememberSubwayNext(info)
+        }
+    }
+
+    private fun rememberSubwayNext(info: NavigationBusInfo) {
+        val next = info.clocks.getOrNull(1)
+        val line = info.arrivals.firstOrNull()?.line?.trim().orEmpty()
+        if (next == null || line.isEmpty()) {
+            lastSubwayNextClock = null
+            lastSubwayNextLine = null
+            return
+        }
+        lastSubwayNextClock = next
+        lastSubwayNextLine = line
     }
 
     private fun isClockLater(next: String, previous: String): Boolean {

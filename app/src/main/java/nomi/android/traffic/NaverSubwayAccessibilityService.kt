@@ -7,6 +7,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.android.traffic.eventfirst.NaverA11yGuidanceEnd
+import nomi.android.traffic.scope.CurrentGuidanceScope
+import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
 
 /**
  * Reads the current Naver Maps screen for subway 빠른 하차 / 빠른 환승,
@@ -49,10 +51,16 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 desc.contains("안내시작")
             NaverTripStartDiag.logClick(diagSeq, event, texts, desc, startClick)
             if (startClick) {
-                NaverTripStartSession.restartFromClick(System.currentTimeMillis())
+                val armed = NaverTripStartSession.restartFromClick(System.currentTimeMillis())
                 NavigationEventVoice.resetNaverTripStart()
                 NaverTripStartDiag.onSessionClockReset()
                 Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] start button armed")
+                NaverTripStartDebug.step1(
+                    how = "click",
+                    armed = armed,
+                    session = NaverTripStartSession.debugSnapshot(),
+                    due = NaverTripStartSession.due(System.currentTimeMillis()),
+                )
                 NavigationEventVoice.pinNaverFromTripCache()
             }
             if (NaverTripStartParser.isEndButton(texts) ||
@@ -115,6 +123,12 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             if (live && !wasLive) {
                 if (NaverTripStartSession.noteLive(now, windowId)) {
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance armed")
+                    NaverTripStartDebug.step1(
+                        how = "live_edge",
+                        armed = true,
+                        session = NaverTripStartSession.debugSnapshot(now),
+                        due = NaverTripStartSession.due(now),
+                    )
                     resetTransferState()
                     NavigationEventVoice.onNaverGuidanceStarted()
                     NavigationEventVoice.pinNaverFromTripCache()
@@ -122,6 +136,9 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     // 안내 중 vanished for a few frames inside the same guidance.
                     // A flicker is not a new trip — keep the subway cues already spoken.
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance began")
+                    NaverTripStartDebug.note(
+                        "STEP1 live_edge_skip ${NaverTripStartSession.debugSnapshot(now)}",
+                    )
                 }
             }
             if (!live && wasLive) {
@@ -137,11 +154,28 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     timestampMillis = now,
                     requireLive = true,
                 )
+                val fromSpeak = liveDecision is NaverTripStartParser.Decision.Speak
+                val cached = if (!fromSpeak) NaverTripStartCache.peek() else null
                 val tripEvent = when (liveDecision) {
                     is NaverTripStartParser.Decision.Speak -> liveDecision.event
                     NaverTripStartParser.Decision.Pending -> NaverTripStartCache.take()
                 }
+                val decisionLabel = when (liveDecision) {
+                    is NaverTripStartParser.Decision.Speak -> "Speak"
+                    NaverTripStartParser.Decision.Pending -> "Pending"
+                }
                 if (tripEvent != null) {
+                    NaverTripStartDebug.step3(
+                        due = true,
+                        decision = decisionLabel,
+                        fromSpeak = fromSpeak,
+                        cacheHit = !fromSpeak && cached != null,
+                        tripNull = false,
+                        action = tripEvent.action,
+                        raw = tripEvent.busInfo?.raw.orEmpty(),
+                        spokenAlready = NaverTripStartSession.hasSpokenBriefing(),
+                        giveUp = false,
+                    )
                     Log.i(
                         NaverMapsTransit.TAG,
                         NaverBusAccessibilityParser.formatLog(tripEvent),
@@ -152,12 +186,30 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     if (NaverTripStartSession.hasSpokenBriefing()) {
                         Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] spoken ${tripEvent.busInfo?.raw.orEmpty()}")
                     }
-                } else if (NaverTripStartSession.giveUpIfStale(now)) {
-                    Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] still waiting for briefing, hold lifted")
+                } else {
+                    val gaveUp = NaverTripStartSession.giveUpIfStale(now)
+                    NaverTripStartDebug.step3(
+                        due = true,
+                        decision = decisionLabel,
+                        fromSpeak = false,
+                        cacheHit = false,
+                        tripNull = true,
+                        action = "-",
+                        raw = "-",
+                        spokenAlready = NaverTripStartSession.hasSpokenBriefing(),
+                        giveUp = gaveUp,
+                    )
+                    if (gaveUp) {
+                        Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] still waiting for briefing, hold lifted")
+                    }
                 }
             }
 
             val screenBlobs = flattenBlobs(tree)
+            try {
+                CurrentGuidanceScope.onScreen(screenBlobs)
+            } catch (_: Throwable) {
+            }
             NaverRideObservationLog.recordA11yTree(
                 ts = now,
                 pkg = pkg,
@@ -268,6 +320,8 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         NaverRideObservationLog.attach(filesDir)
         NavigationEventVoice.prepare(this)
         Log.i(NaverMapsTransit.TAG, "service connected")
+        NaverTripStartDebug.note("service_connected ${NaverTripStartDebug.buildMark()}")
+        CurrentGuidanceScopeDebug.emit("feed_attached a11y")
     }
 
     override fun onInterrupt() = Unit

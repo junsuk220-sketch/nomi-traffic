@@ -40,6 +40,9 @@ object NaverTripStartParser {
     private val clockInText = Regex("""(\d{1,2}):(\d{2})""")
     private val startPhrasePattern = Regex("""길\s*안내를\s*시작""")
     private val rideMinutesNearPattern = Regex("""\d+\s*개\s*역""")
+    private val listedBusLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val trainBoundBlob = Regex("""^[^,\s()]+행$""")
+    private const val NO_ARRIVAL_INFO = "도착 예정 정보 없음"
 
     fun isStartPhrase(raw: String?): Boolean {
         val text = clean(raw)
@@ -61,69 +64,218 @@ object NaverTripStartParser {
         timestampMillis: Long = 0L,
         requireLive: Boolean = true,
     ): Decision {
-        if (packageName != NaverMapNotification.PACKAGE) return Decision.Pending
+        if (packageName != NaverMapNotification.PACKAGE) {
+            return Decision.Pending.also {
+                if (requireLive) {
+                    NaverTripStartDebug.step2(
+                        requireLive = true,
+                        live = false,
+                        blobCount = 0,
+                        hasStart = false,
+                        hasEnd = false,
+                        sliceMode = "none",
+                        scopedCount = 0,
+                        head = "",
+                        tail = "",
+                        bus = "-",
+                        subway = "-",
+                        decision = "Pending",
+                        drop = "wrong_package",
+                    )
+                }
+            }
+        }
         val blobs = flatten(root).map(::clean).filter { it.isNotEmpty() }
         val live = blobs.any { it == "안내 중" }
         val preview = blobs.any { it == "안내시작" }
-        if (requireLive) {
-            if (!live) return Decision.Pending
+        val hasStart = blobs.any { NaverActiveGuidanceSlice.isStart(it) }
+        val hasEnd = blobs.any { NaverActiveGuidanceSlice.isEnd(it) }
+        var sliceMode = "none"
+        val scoped = if (requireLive) {
+            if (!live) {
+                NaverTripStartDebug.step2(
+                    requireLive = true,
+                    live = false,
+                    blobCount = blobs.size,
+                    hasStart = hasStart,
+                    hasEnd = hasEnd,
+                    sliceMode = "none",
+                    scopedCount = 0,
+                    head = "",
+                    tail = "",
+                    bus = "-",
+                    subway = "-",
+                    decision = "Pending",
+                    drop = "not_live",
+                )
+                return Decision.Pending
+            }
+            // Prefer 안내 중..안내 종료. At guidance start the end marker is often
+            // still missing; use 안내 중..EOF so trip-start can still brief without
+            // falling back to the full flatten (alts before 안내 중 stay out).
+            val slice = NaverActiveGuidanceSlice.from(blobs)
+            if (slice.isNotEmpty()) {
+                sliceMode = "active_slice"
+                slice
+            } else {
+                val start = blobs.indexOfFirst { NaverActiveGuidanceSlice.isStart(it) }
+                if (start < 0) {
+                    NaverTripStartDebug.step2(
+                        requireLive = true,
+                        live = true,
+                        blobCount = blobs.size,
+                        hasStart = hasStart,
+                        hasEnd = hasEnd,
+                        sliceMode = "none",
+                        scopedCount = 0,
+                        head = "",
+                        tail = "",
+                        bus = "-",
+                        subway = "-",
+                        decision = "Pending",
+                        drop = "no_start_marker",
+                    )
+                    return Decision.Pending
+                }
+                sliceMode = "start_to_eof"
+                blobs.subList(start, blobs.size)
+            }
         } else {
-            if (!preview || live) return Decision.Pending
+            if (!preview || live) {
+                return Decision.Pending
+            }
+            sliceMode = "preview_full"
+            blobs
         }
-        val walkMinutes = walkMinutes(blobs)
+        val walkMinutes = walkMinutes(scoped)
         if (walkMinutes == null && !requireLive) return Decision.Pending
         val walk = walkMinutes ?: 0
-        val bus = firstBus(blobs)
-        val subway = firstSubway(blobs)
+        val bus = firstBus(scoped)
+        val subway = firstSubway(scoped)
+        val noEtaBusLine = firstBusLineWithoutEta(scoped)
+        val busLabel = when {
+            noEtaBusLine != null -> "$noEtaBusLine(noEta)"
+            bus != null -> bus.joinToString(",") { "${it.line}:${it.eta}" }
+            else -> "-"
+        }
+        val subwayLabel = subway ?: "-"
+        fun finish(result: Decision, drop: String? = null): Decision {
+            if (requireLive) {
+                val (head, tail) = NaverTripStartDebug.clipBlobs(scoped)
+                NaverTripStartDebug.step2(
+                    requireLive = true,
+                    live = live,
+                    blobCount = blobs.size,
+                    hasStart = hasStart,
+                    hasEnd = hasEnd,
+                    sliceMode = sliceMode,
+                    scopedCount = scoped.size,
+                    head = head,
+                    tail = tail,
+                    bus = busLabel,
+                    subway = subwayLabel,
+                    decision = when (result) {
+                        is Decision.Speak -> "Speak:${result.event.rawText}"
+                        Decision.Pending -> "Pending"
+                    },
+                    drop = drop,
+                )
+            }
+            return result
+        }
         val busFirst = bus?.minWithOrNull(
             compareBy { TransitSoonEta.minutes(it.eta) ?: Int.MAX_VALUE },
         )
+        val busLineForOrder = noEtaBusLine ?: busFirst?.line
         val preferBus = when {
-            busFirst != null && subway != null ->
-                indexOfBusSeed(blobs, busFirst.line) <= indexOfSubwaySeed(blobs, subway)
-            busFirst != null -> true
+            busLineForOrder != null && subway != null ->
+                indexOfBusSeed(scoped, busLineForOrder) <= indexOfSubwaySeed(scoped, subway)
+            busLineForOrder != null -> true
             subway != null -> false
-            else -> return Decision.Pending
+            else -> return finish(Decision.Pending, "no_bus_no_subway")
         }
-        if (preferBus && bus != null) {
-            return Decision.Speak(
-                tripStartEvent(
-                    arrivals = bus,
-                    walkMinutes = walk,
-                    kind = NaverMapsTransit.KIND_BUS,
-                    timestampMillis = timestampMillis,
-                ),
-            )
+        if (preferBus) {
+            if (noEtaBusLine != null) {
+                val own = bus.orEmpty().filter { it.line == noEtaBusLine }
+                if (own.isEmpty()) {
+                    return finish(
+                        Decision.Speak(
+                            tripStartEvent(
+                                arrivals = listOf(
+                                    NavigationBusArrival(line = noEtaBusLine, eta = ""),
+                                ),
+                                walkMinutes = walk,
+                                kind = NaverMapsTransit.KIND_BUS,
+                                timestampMillis = timestampMillis,
+                            ),
+                        ),
+                    )
+                }
+            }
+            if (bus != null) {
+                return finish(
+                    Decision.Speak(
+                        tripStartEvent(
+                            arrivals = bus,
+                            walkMinutes = walk,
+                            kind = NaverMapsTransit.KIND_BUS,
+                            timestampMillis = timestampMillis,
+                        ),
+                    ),
+                )
+            }
         }
         if (subway != null) {
-            val subwayArrivals = subwayArrivals(
-                line = subway,
-                blobs = blobs,
-                timestampMillis = timestampMillis,
-                walkMinutes = walk,
-            )
+            val noEtaSubway = !preferBus && subwayHasNoEta(scoped, subway)
+            val subwayArrivals = if (noEtaSubway) {
+                emptyList()
+            } else {
+                subwayArrivals(
+                    line = subway,
+                    blobs = scoped,
+                    timestampMillis = timestampMillis,
+                    walkMinutes = walk,
+                )
+            }
             if (subwayArrivals.isNotEmpty()) {
-                return Decision.Speak(
-                    tripStartEvent(
-                        arrivals = subwayArrivals,
-                        walkMinutes = walk,
-                        kind = NaverMapsTransit.KIND_SUBWAY,
-                        timestampMillis = timestampMillis,
+                return finish(
+                    Decision.Speak(
+                        tripStartEvent(
+                            arrivals = subwayArrivals,
+                            walkMinutes = walk,
+                            kind = NaverMapsTransit.KIND_SUBWAY,
+                            timestampMillis = timestampMillis,
+                        ),
+                    ),
+                )
+            }
+            if (!preferBus) {
+                return finish(
+                    Decision.Speak(
+                        tripStartEvent(
+                            arrivals = listOf(NavigationBusArrival(line = subway, eta = "")),
+                            walkMinutes = walk,
+                            kind = NaverMapsTransit.KIND_SUBWAY,
+                            timestampMillis = timestampMillis,
+                            bound = firstTrainBound(scoped),
+                        ),
                     ),
                 )
             }
         }
         if (bus != null) {
-            return Decision.Speak(
-                tripStartEvent(
-                    arrivals = bus,
-                    walkMinutes = walk,
-                    kind = NaverMapsTransit.KIND_BUS,
-                    timestampMillis = timestampMillis,
+            return finish(
+                Decision.Speak(
+                    tripStartEvent(
+                        arrivals = bus,
+                        walkMinutes = walk,
+                        kind = NaverMapsTransit.KIND_BUS,
+                        timestampMillis = timestampMillis,
+                    ),
                 ),
             )
         }
-        return Decision.Pending
+        return finish(Decision.Pending, "fallthrough")
     }
 
     /** 302 wait board that arrived while trip-start is still pending. */
@@ -169,6 +321,7 @@ object NaverTripStartParser {
         walkMinutes: Int,
         kind: String,
         timestampMillis: Long,
+        bound: String? = null,
     ): NavigationEvent {
         val first = arrivals.minWithOrNull(
             compareBy<NavigationBusArrival> {
@@ -179,6 +332,7 @@ object NaverTripStartParser {
             first,
             NaverNextVehicle.afterSoonest(arrivals, first),
         )
+        val boundTail = bound?.trim().orEmpty().let { if (it.isEmpty()) "" else " $it" }
         return NavigationEvent(
             source = NavigationEventSource.NAVER,
             type = NavigationEventType.TRANSIT,
@@ -189,7 +343,8 @@ object NaverTripStartParser {
             distanceMeters = walkMinutes,
             rawText = kind,
             busInfo = NavigationBusInfo(
-                raw = packed.joinToString(" ") { "${it.line} ${it.eta}" } + " walk=$walkMinutes",
+                raw = packed.joinToString(" ") { "${it.line} ${it.eta}" } +
+                    " walk=$walkMinutes$boundTail",
                 arrivals = packed,
             ),
             timestampMillis = timestampMillis,
@@ -219,13 +374,34 @@ object NaverTripStartParser {
         return null
     }
 
+    /**
+     * A listed bus row that Naver printed without minutes — not an ETA guess.
+     * The first such line is the current wait when it appears before subway.
+     */
+    private fun firstTrainBound(blobs: List<String>): String? =
+        blobs.firstOrNull { trainBoundBlob.matches(it) }
+
+    /** `도착 예정 정보 없음` on this subway board, before a later bus row. */
+    private fun subwayHasNoEta(blobs: List<String>, subway: String): Boolean {
+        val from = indexOfSubwaySeed(blobs, subway)
+        if (from == Int.MAX_VALUE) return false
+        val until = blobs.indices.firstOrNull { i ->
+            i > from && listedBusLine.matches(blobs[i])
+        } ?: blobs.size
+        return blobs.subList(from, until).any { it.contains(NO_ARRIVAL_INFO) }
+    }
+
+    private fun firstBusLineWithoutEta(blobs: List<String>): String? {
+        for (i in blobs.indices) {
+            if (!listedBusLine.matches(blobs[i])) continue
+            val window = blobs.subList(i + 1, minOf(blobs.size, i + 8))
+            if (window.any { it.contains(NO_ARRIVAL_INFO) }) return blobs[i]
+        }
+        return null
+    }
+
     private fun firstBus(blobs: List<String>): List<NavigationBusArrival>? {
-        val events = NaverBusAccessibilityParser.parse(
-            packageName = NaverMapNotification.PACKAGE,
-            root = fakeRoot(listOf("안내 중") + blobs),
-            timestampMillis = 0L,
-        )
-        val arrivals = events.firstOrNull()?.busInfo?.arrivals.orEmpty()
+        val arrivals = NaverBusAccessibilityParser.arrivalsFromBlobs(blobs)
         if (arrivals.isEmpty()) return null
         return arrivals
     }
@@ -350,11 +526,6 @@ object NaverTripStartParser {
         if (deltaMin < 0 || deltaMin > 120) return null
         return deltaMin
     }
-
-    private fun fakeRoot(blobs: List<String>): NaverSubwayAccessibilityParser.Node =
-        NaverSubwayAccessibilityParser.Node(
-            children = blobs.map { NaverSubwayAccessibilityParser.Node(text = it) },
-        )
 
     private fun flatten(node: NaverSubwayAccessibilityParser.Node): List<String> {
         val out = ArrayList<String>()

@@ -60,12 +60,49 @@ class NavigationEventSpeaker(
     }
 
     private fun offerNaverTransit(event: NavigationEvent) {
-        val incoming = promoteArmedTripStart(event) ?: event
+        val promoted = promoteArmedTripStart(event)
+        val incoming = promoted ?: event
+        if (promoted != null) {
+            NaverTripStartDebug.note(
+                "STEP3 promoteArmedTripStart action=${promoted.action} " +
+                    "raw=${promoted.busInfo?.raw.orEmpty()} " +
+                    "fromAction=${event.action}",
+            )
+        }
         if (incoming.action == NaverMapsTransit.TRIP_START_ACTION) {
             pinFromTripStart(incoming)
-            val line = NavigationEventSpeech.line(incoming) ?: return
+            val line = NavigationEventSpeech.line(incoming)
+            if (line == null) {
+                NaverTripStartDebug.step5(
+                    action = incoming.action,
+                    promoted = promoted != null,
+                    lineNull = true,
+                    line = "",
+                    accepted = false,
+                    drop = "tripStartLine_null",
+                )
+                return
+            }
             val accepted = synchronized(lock) { gate.accept(incoming) }
-            if (!accepted) return
+            if (!accepted) {
+                NaverTripStartDebug.step5(
+                    action = incoming.action,
+                    promoted = promoted != null,
+                    lineNull = false,
+                    line = line,
+                    accepted = false,
+                    drop = "duplicate_or_gate_reject",
+                )
+                return
+            }
+            NaverTripStartDebug.step5(
+                action = incoming.action,
+                promoted = promoted != null,
+                lineNull = false,
+                line = line,
+                accepted = true,
+                drop = null,
+            )
             speak(line)
             NaverTripStartSession.markSpoken(System.currentTimeMillis())
             if (incoming.rawText == NaverMapsTransit.KIND_BUS) {
@@ -144,22 +181,26 @@ class NavigationEventSpeaker(
                 )
                 return
             }
-            speakNextTrainOnce(event)
-            val line = NavigationEventSpeech.line(event) ?: return
-            val transferBrief = synchronized(lock) { gate.acceptTransferSubwayBrief(event) }
+            val waitEvent = synchronized(lock) {
+                gate.rememberNaverSubwayClocks(event)
+                gate.withRememberedSubwayNext(event)
+            }
+            speakNextTrainOnce(waitEvent)
+            val line = NavigationEventSpeech.line(waitEvent) ?: return
+            val transferBrief = synchronized(lock) { gate.acceptTransferSubwayBrief(waitEvent) }
             if (transferBrief) {
-                val detailed = NavigationEventSpeech.line(event, includeFastAlight = true) ?: line
+                val detailed = NavigationEventSpeech.line(waitEvent, includeFastAlight = true) ?: line
                 Log.i(NaverMapNotification.TAG, "[NAVER_TRANSFER_SUBWAY] speak $detailed")
                 speak(detailed)
                 return
             }
-            val brief = synchronized(lock) { gate.acceptNaverSubwayWalkBrief(event) }
+            val brief = synchronized(lock) { gate.acceptNaverSubwayWalkBrief(waitEvent) }
             if (brief) {
                 Log.i(NaverMapNotification.TAG, "[NAVER_SUBWAY_BRIEF] speak $line")
                 speak(line)
                 return
             }
-            val accepted = synchronized(lock) { gate.accept(event) }
+            val accepted = synchronized(lock) { gate.accept(waitEvent) }
             if (!accepted) {
                 Log.i(
                     NaverMapNotification.TAG,
@@ -241,9 +282,11 @@ class NavigationEventSpeaker(
             return
         }
         if (engineReady && voiceWarmed && tts != null) {
+            NaverTripStartDebug.step6(text = text, path = "speakNow")
             speakNow(text)
             return
         }
+        NaverTripStartDebug.step6(text = text, path = "queued")
         pending = text
         ensureTts()
         Log.i(NaverMapNotification.TAG, "[NAV_TTS] queued until warmed")

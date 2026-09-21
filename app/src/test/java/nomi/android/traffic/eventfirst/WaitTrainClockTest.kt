@@ -125,7 +125,7 @@ class WaitTrainClockTest {
         assertEquals(Reason.SPEAK_STAGE_2, ride.at("17:14:00", INCHEON_WALK, "검단호수공원행 (17:16)").decision.reason)
         val soon = ride.at("17:15:00", INCHEON_WALK, "검단호수공원행 (17:16)")
         assertEquals(Reason.SPEAK_SOON, soon.decision.reason)
-        assertEquals("인천1호선, 곧 출발합니다.", soon.sentence)
+        assertEquals("인천1호선, 곧 도착합니다.", soon.sentence)
     }
 
     // K. a departure time drifting back and forth is one train
