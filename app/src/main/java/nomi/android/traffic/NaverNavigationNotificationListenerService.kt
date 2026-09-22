@@ -7,10 +7,12 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import nomi.android.traffic.eventfirst.EventFirstEngine
+import nomi.android.traffic.api.eta.EtaShadow
 import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
+import nomi.android.traffic.speech.SpeechLedger
 import nomi.android.traffic.track.VehicleTracking
 import nomi.android.traffic.track.VehicleTrackingDebug
 import nomi.product.nav.NavigationEventType
@@ -97,8 +99,13 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                 ),
             )
             TransitObservationDebug.emit(reading)
-            VehicleTrackingDebug.emit(
-                VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading),
+            val nowMs = System.currentTimeMillis()
+            val vehicle = VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading)
+            VehicleTrackingDebug.emit(vehicle)
+            EtaShadow.tick(
+                vehicle,
+                NavigationEventVoice.speechLedger() ?: SpeechLedger(),
+                nowMs,
             )
         } catch (_: Throwable) {
         }

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 import nomi.android.traffic.buswait.BusWaitFieldTrace
+import nomi.android.traffic.speech.SpeechLedger
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
 
@@ -28,6 +29,9 @@ object NavigationEventVoice {
     private var screenWatchRegistered = false
     @Volatile
     private var screenOff = false
+
+    /** Read-only facts about what SpeechSink already played. */
+    fun speechLedger(): SpeechLedger? = synchronized(lock) { speaker?.ledger() }
 
     fun prepare(context: Context) {
         appContext = context.applicationContext

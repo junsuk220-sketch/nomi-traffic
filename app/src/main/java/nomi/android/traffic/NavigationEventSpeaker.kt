@@ -2,6 +2,7 @@ package nomi.android.traffic
 
 import android.content.Context
 import android.util.Log
+import nomi.android.traffic.speech.SpeechLedger
 import nomi.android.traffic.speech.SpeechSink
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
@@ -29,6 +30,8 @@ class NavigationEventSpeaker(
             }
         }
     }
+
+    fun ledger(): SpeechLedger = sink.ledger
 
     fun speakNotice(text: String) {
         val line = text.trim()
