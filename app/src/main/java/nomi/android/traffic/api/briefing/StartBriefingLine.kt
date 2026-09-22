@@ -1,0 +1,67 @@
+package nomi.android.traffic.api.briefing
+
+import nomi.android.traffic.TransitSoonEta
+import nomi.android.traffic.observe.TransitRow
+import nomi.android.traffic.scope.GuidanceKind
+
+/**
+ * Start-briefing letters only. Same wording as the current trip-start lines.
+ * Does not invent ETA or walk minutes.
+ */
+internal object StartBriefingLine {
+
+    fun text(
+        kind: GuidanceKind,
+        first: TransitRow,
+        next: TransitRow?,
+    ): String? {
+        val line = first.line.trim()
+        if (line.isEmpty()) return null
+        val vehicle = vehicleClause(kind, line, first.eta) ?: return null
+        val nextTail = next?.let { nextClause(kind, it) }
+        return if (nextTail == null) vehicle else "$vehicle $nextTail"
+    }
+
+    private fun vehicleClause(kind: GuidanceKind, line: String, eta: String): String? {
+        val subway = kind == GuidanceKind.SUBWAY
+        if (eta.isBlank()) {
+            return if (subway) {
+                "$line 열차 도착 예정 정보가 없습니다."
+            } else {
+                "${line}번 버스 도착 예정 정보가 없습니다."
+            }
+        }
+        if (TransitSoonEta.matches(eta)) {
+            return if (subway) {
+                "$line, 곧 도착합니다."
+            } else {
+                "${line}번, ${line}번 버스, 곧 도착합니다."
+            }
+        }
+        val minutes = TransitSoonEta.minutes(eta) ?: return null
+        if (minutes < 1) return null
+        return if (subway) {
+            "${subwaySubject(line)} ${minutes}분 후 출발합니다."
+        } else {
+            "${line}번, ${line}번 버스가 ${minutes}분 후 도착합니다."
+        }
+    }
+
+    private fun nextClause(kind: GuidanceKind, next: TransitRow): String? {
+        val subway = kind == GuidanceKind.SUBWAY
+        if (TransitSoonEta.matches(next.eta)) {
+            return if (subway) "다음 열차는 곧 도착합니다."
+            else "다음은 ${next.line}번, 곧 도착합니다."
+        }
+        val minutes = TransitSoonEta.minutes(next.eta) ?: return null
+        if (minutes < 1) return null
+        return if (subway) {
+            "다음 열차는 ${minutes}분 후 도착입니다."
+        } else {
+            "다음은 ${next.line}번, ${minutes}분 후 도착입니다."
+        }
+    }
+
+    private fun subwaySubject(line: String): String =
+        if (line.endsWith("선") || line.endsWith("호선")) "${line}이" else "${line}가"
+}

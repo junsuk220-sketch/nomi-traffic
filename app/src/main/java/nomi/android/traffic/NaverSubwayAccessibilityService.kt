@@ -7,6 +7,8 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.android.traffic.eventfirst.NaverA11yGuidanceEnd
+import nomi.android.traffic.api.briefing.StartBriefingShadow
+import nomi.android.traffic.api.briefing.StartBriefingShadowDebug
 import nomi.android.traffic.api.eta.EtaShadow
 import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
@@ -219,13 +221,15 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             try {
                 val reading = TransitObservation.fromScreen(pkg, tree, now)
                 TransitObservationDebug.emit(reading)
-                val vehicle = VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading)
+                val scope = CurrentGuidanceScope.snapshot()
+                val vehicle = VehicleTracking.observe(scope, reading)
                 VehicleTrackingDebug.emit(vehicle)
                 EtaShadow.tick(
                     vehicle,
                     NavigationEventVoice.speechLedger() ?: SpeechLedger(),
                     now,
                 )
+                StartBriefingShadow.tick(scope, reading)
             } catch (_: Throwable) {
             }
             NaverRideObservationLog.recordA11yTree(
@@ -342,6 +346,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         CurrentGuidanceScopeDebug.emit("feed_attached a11y")
         TransitObservationDebug.emit("feed_attached a11y")
         VehicleTrackingDebug.emit("feed_attached a11y")
+        StartBriefingShadowDebug.emit("feed_attached a11y")
     }
 
     override fun onInterrupt() = Unit

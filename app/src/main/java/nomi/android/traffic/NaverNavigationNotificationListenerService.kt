@@ -7,6 +7,8 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import nomi.android.traffic.eventfirst.EventFirstEngine
+import nomi.android.traffic.api.briefing.StartBriefingShadow
+import nomi.android.traffic.api.briefing.StartBriefingShadowDebug
 import nomi.android.traffic.api.eta.EtaShadow
 import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
@@ -31,6 +33,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         CurrentGuidanceScopeDebug.emit("feed_attached notification")
         TransitObservationDebug.emit("feed_attached notification")
         VehicleTrackingDebug.emit("feed_attached notification")
+        StartBriefingShadowDebug.emit("feed_attached notification")
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
 
@@ -100,13 +103,15 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
             )
             TransitObservationDebug.emit(reading)
             val nowMs = System.currentTimeMillis()
-            val vehicle = VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading)
+            val scope = CurrentGuidanceScope.snapshot()
+            val vehicle = VehicleTracking.observe(scope, reading)
             VehicleTrackingDebug.emit(vehicle)
             EtaShadow.tick(
                 vehicle,
                 NavigationEventVoice.speechLedger() ?: SpeechLedger(),
                 nowMs,
             )
+            StartBriefingShadow.tick(scope, reading)
         } catch (_: Throwable) {
         }
         NaverRideObservationLog.recordNotification(
