@@ -11,6 +11,8 @@ import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
+import nomi.android.traffic.track.VehicleTracking
+import nomi.android.traffic.track.VehicleTrackingDebug
 import nomi.product.nav.NavigationEventType
 
 /**
@@ -26,6 +28,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         NavigationEventVoice.prepare(this)
         CurrentGuidanceScopeDebug.emit("feed_attached notification")
         TransitObservationDebug.emit("feed_attached notification")
+        VehicleTrackingDebug.emit("feed_attached notification")
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
 
@@ -78,22 +81,24 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val primary = extraText(extras, NaverMapNotification.EXTRA_PRIMARY)
         val chipExpandedText = chip
         try {
-            TransitObservationDebug.emit(
-                TransitObservation.fromNotification(
-                    NaverNotificationParser.Snapshot(
-                        packageName = sbn.packageName,
-                        notificationId = sbn.id,
-                        channel = channel,
-                        title = title,
-                        text = text,
-                        action = nowbarPrimary,
-                        chip = chip,
-                        secondary = secondary,
-                        nowbarSecondary = nowbarSecondary,
-                        bigText = bigText,
-                        timestampMillis = System.currentTimeMillis(),
-                    ),
+            val reading = TransitObservation.fromNotification(
+                NaverNotificationParser.Snapshot(
+                    packageName = sbn.packageName,
+                    notificationId = sbn.id,
+                    channel = channel,
+                    title = title,
+                    text = text,
+                    action = nowbarPrimary,
+                    chip = chip,
+                    secondary = secondary,
+                    nowbarSecondary = nowbarSecondary,
+                    bigText = bigText,
+                    timestampMillis = System.currentTimeMillis(),
                 ),
+            )
+            TransitObservationDebug.emit(reading)
+            VehicleTrackingDebug.emit(
+                VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading),
             )
         } catch (_: Throwable) {
         }

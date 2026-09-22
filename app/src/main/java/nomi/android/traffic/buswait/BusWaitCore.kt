@@ -147,15 +147,25 @@ class BusWaitCore {
             )
         }
         val onTrackedLine = soonest(scoped.filter { it.line == previous.line })
-        if (onTrackedLine != null && !isSettledReading(previous, onTrackedLine, nowMs)) {
-            // 302 and the sheet disagree: hold the tracked bus and stay quiet.
-            return Tick(
+        if (onTrackedLine != null) {
+            val settle = isSettledReading(
                 previous,
-                switched = false,
-                speakStage = null,
-                silence = BusWaitSilence.UNSETTLED_FEED,
-                path = BusWaitTracePath.HOLD_UNSETTLED,
+                onTrackedLine,
+                nowMs,
+                SettleClock(soonSeenAtMs, trackedEtaAtMs, pendingEta, pendingSinceMs),
             )
+            pendingEta = settle.pendingEta
+            pendingSinceMs = settle.pendingSinceMs
+            if (!settle.settled) {
+                // 302 and the sheet disagree: hold the tracked bus and stay quiet.
+                return Tick(
+                    previous,
+                    switched = false,
+                    speakStage = null,
+                    silence = BusWaitSilence.UNSETTLED_FEED,
+                    path = BusWaitTracePath.HOLD_UNSETTLED,
+                )
+            }
         }
         val sameAsPrevious = findSame(previous, scoped)
         if (sameAsPrevious != null) {
@@ -231,45 +241,6 @@ class BusWaitCore {
         if (TransitSoonEta.minutes(arrival.eta) == 0) soonSeenAtMs = nowMs
     }
 
-    /**
-     * The two Naver feeds (302 board, live sheet) can lag each other by a whole
-     * vehicle. A reading that the clock cannot explain waits for [CONFIRM_MS] of
-     * the same value before it may change the tracked bus.
-     */
-    private fun isSettledReading(
-        previous: NavigationBusArrival,
-        candidate: NavigationBusArrival,
-        nowMs: Long,
-    ): Boolean {
-        val previousEta = TransitSoonEta.minutes(previous.eta) ?: return true
-        val candidateEta = TransitSoonEta.minutes(candidate.eta) ?: return true
-        val suspect = when {
-            // No bus follows a 곧 bus by only 2~3분 — one feed is behind.
-            previousEta == 0 && candidateEta in 2..ETA_SLACK_MINUTES ->
-                nowMs - (soonSeenAtMs ?: nowMs) < SOON_DEPART_MS
-            // An ETA cannot drop this far in seconds.
-            previousEta - candidateEta >= ETA_DROP_MINUTES ->
-                nowMs - trackedEtaAtMs < CONFIRM_MS
-            else -> false
-        }
-        if (!suspect) {
-            pendingEta = null
-            return true
-        }
-        if (!continuesPending(candidate.eta)) {
-            pendingEta = candidate.eta
-            pendingSinceMs = nowMs
-            return false
-        }
-        return nowMs - pendingSinceMs >= CONFIRM_MS
-    }
-
-    /** A held reading counting down (9분 → 8분) is the same board; 곧 ↔ 5분 is not. */
-    private fun continuesPending(eta: String): Boolean {
-        val pending = pendingEta?.let { TransitSoonEta.minutes(it) } ?: return false
-        val minutes = TransitSoonEta.minutes(eta) ?: return false
-        return minutes in (pending - ETA_DROP_MINUTES)..(pending + 1)
-    }
 
     private fun expandAlternativesIfNeeded(arrivals: List<NavigationBusArrival>) {
         if (pinned.isEmpty() || arrivals.isEmpty()) return
@@ -422,8 +393,63 @@ class BusWaitCore {
             return candidateEta <= currentEta - LINE_SWITCH_MINUTES
         }
 
+        /**
+         * The two Naver feeds (302 board, live sheet) can lag each other by a whole
+         * vehicle. A reading that the clock cannot explain waits for [CONFIRM_MS] of
+         * the same value before it may change the tracked bus.
+         */
+        internal fun isSettledReading(
+            previous: NavigationBusArrival,
+            candidate: NavigationBusArrival,
+            nowMs: Long,
+            clock: SettleClock,
+        ): SettleResult {
+            val previousEta = TransitSoonEta.minutes(previous.eta)
+                ?: return SettleResult(true, null, clock.pendingSinceMs)
+            val candidateEta = TransitSoonEta.minutes(candidate.eta)
+                ?: return SettleResult(true, null, clock.pendingSinceMs)
+            val suspect = when {
+                previousEta == 0 && candidateEta in 2..ETA_SLACK_MINUTES ->
+                    nowMs - (clock.soonSeenAtMs ?: nowMs) < SOON_DEPART_MS
+                previousEta - candidateEta >= ETA_DROP_MINUTES ->
+                    nowMs - clock.trackedEtaAtMs < CONFIRM_MS
+                else -> false
+            }
+            if (!suspect) {
+                return SettleResult(true, null, clock.pendingSinceMs)
+            }
+            if (!continuesPending(clock.pendingEta, candidate.eta)) {
+                return SettleResult(false, candidate.eta, nowMs)
+            }
+            return SettleResult(
+                settled = nowMs - clock.pendingSinceMs >= CONFIRM_MS,
+                pendingEta = clock.pendingEta,
+                pendingSinceMs = clock.pendingSinceMs,
+            )
+        }
+
+        /** A held reading counting down (9분 → 8분) is the same board; 곧 ↔ 5분 is not. */
+        private fun continuesPending(pendingEta: String?, eta: String): Boolean {
+            val pending = pendingEta?.let { TransitSoonEta.minutes(it) } ?: return false
+            val minutes = TransitSoonEta.minutes(eta) ?: return false
+            return minutes in (pending - ETA_DROP_MINUTES)..(pending + 1)
+        }
+
         private val soonestOrder = compareBy<NavigationBusArrival> {
             TransitSoonEta.minutes(it.eta) ?: Int.MAX_VALUE
         }.thenBy { it.stopsRemaining ?: Int.MAX_VALUE }
     }
 }
+
+internal data class SettleClock(
+    val soonSeenAtMs: Long?,
+    val trackedEtaAtMs: Long,
+    val pendingEta: String?,
+    val pendingSinceMs: Long,
+)
+
+internal data class SettleResult(
+    val settled: Boolean,
+    val pendingEta: String?,
+    val pendingSinceMs: Long,
+)

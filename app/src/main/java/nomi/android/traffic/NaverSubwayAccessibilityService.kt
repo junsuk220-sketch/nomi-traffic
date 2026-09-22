@@ -11,6 +11,8 @@ import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
+import nomi.android.traffic.track.VehicleTracking
+import nomi.android.traffic.track.VehicleTrackingDebug
 
 /**
  * Reads the current Naver Maps screen for subway 빠른 하차 / 빠른 환승,
@@ -213,8 +215,10 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             } catch (_: Throwable) {
             }
             try {
-                TransitObservationDebug.emit(
-                    TransitObservation.fromScreen(pkg, tree, now),
+                val reading = TransitObservation.fromScreen(pkg, tree, now)
+                TransitObservationDebug.emit(reading)
+                VehicleTrackingDebug.emit(
+                    VehicleTracking.observe(CurrentGuidanceScope.snapshot(), reading),
                 )
             } catch (_: Throwable) {
             }
@@ -331,6 +335,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         NaverTripStartDebug.note("service_connected ${NaverTripStartDebug.buildMark()}")
         CurrentGuidanceScopeDebug.emit("feed_attached a11y")
         TransitObservationDebug.emit("feed_attached a11y")
+        VehicleTrackingDebug.emit("feed_attached a11y")
     }
 
     override fun onInterrupt() = Unit
