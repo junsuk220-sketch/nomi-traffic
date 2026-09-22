@@ -183,6 +183,27 @@ class TransitObservationTest {
         assertEquals(listOf("88B", "88B"), reading.rows.map { it.line })
         assertEquals(listOf("2분", "10분"), reading.rows.map { it.eta })
         assertEquals(10L, reading.atMs)
+        assertEquals(5, reading.walkMinutes)
+    }
+
+    @Test
+    fun `walk minutes are not invented from a bus eta`() {
+        val reading = TransitObservation.fromScreen(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "대우.삼성오피스텔 승차",
+                    "88B",
+                    "2분",
+                    "2정류장",
+                    "여유",
+                    "안내 중",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+            atMs = 12L,
+        )!!
+        assertEquals(listOf("2분"), reading.rows.map { it.eta })
+        assertNull(reading.walkMinutes)
     }
 
     @Test

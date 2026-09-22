@@ -48,6 +48,7 @@ object TransitObservation {
                     )
                 },
                 raw = arrivals.joinToString(", ") { "${it.line} (${it.eta})" },
+                walkMinutes = walkMinutesOf(scoped),
             )
         }
         val subway = NaverSubwayAccessibilityParser.parse(
@@ -55,7 +56,10 @@ object TransitObservation {
             root = root,
             timestampMillis = atMs,
         ).firstOrNull()
-        if (subway != null) return toReading(ObservationSource.SCREEN, subway)
+        if (subway != null) {
+            return toReading(ObservationSource.SCREEN, subway)
+                .copy(walkMinutes = walkMinutesOf(scoped.ifEmpty { blobs }))
+        }
         return null
     }
 
@@ -122,6 +126,12 @@ object TransitObservation {
     private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
     private val minutesAndStops = Regex("""^\d+\s*분\s*\d+\s*정류장""")
     private val stopsOnly = Regex("""^\d+\s*정류장$""")
+    private val walkAbout = Regex("""도보\s*약\s*(\d+)\s*분""")
+    private val walkMinutes = Regex("""도보\s*(\d+)\s*분""")
+    private val walkMetersMinutes =
+        Regex("""도보\s*\d+\s*m\s*[·•.\-]?\s*(\d+)\s*분""", RegexOption.IGNORE_CASE)
+    private val walkMetersOnly = Regex("""도보\s*\d+\s*m""", RegexOption.IGNORE_CASE)
+    private val bareMinutes = Regex("""^(\d+)\s*분$""")
 
     private fun toReading(
         source: ObservationSource,
@@ -143,7 +153,32 @@ object TransitObservation {
                 )
             },
             raw = event.rawText,
+            walkMinutes = walkMinutesOf(
+                listOfNotNull(event.title, event.action, event.rawText),
+            ),
         )
+    }
+
+    private fun walkMinutesOf(blobs: List<String>): Int? {
+        for (blob in blobs) {
+            walkAbout.find(blob)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        }
+        for (blob in blobs) {
+            walkMetersMinutes.find(blob)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        }
+        for (blob in blobs) {
+            walkMinutes.find(blob)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
+        }
+        for (i in blobs.indices) {
+            if (!walkMetersOnly.containsMatchIn(blobs[i])) continue
+            for (j in (i + 1)..minOf(i + 4, blobs.lastIndex)) {
+                bareMinutes.matchEntire(blobs[j])?.groupValues?.get(1)
+                    ?.toIntOrNull()
+                    ?.takeIf { it in 1..120 }
+                    ?.let { return it }
+            }
+        }
+        return null
     }
 
     private fun kindOf(event: NavigationEvent, hasRows: Boolean): TransitKind = when {

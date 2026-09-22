@@ -41,7 +41,12 @@ object StartBriefing {
             silence = StartBriefingSilence.NO_SCOPE_ROW,
         )
         val next = pickSoonest(own.filterNot { it.line == first.line && it.eta == first.eta })
-        val text = StartBriefingLine.text(scope.kind, first, next)
+        val text = StartBriefingLine.text(
+            kind = scope.kind,
+            first = first,
+            next = next,
+            walkMinutes = reading.walkMinutes,
+        )
             ?: return StartBriefingOutcome(silence = StartBriefingSilence.NO_TEXT)
         spokenGeneration = scope.generation
         return StartBriefingOutcome(request = SpeechRequest(text))

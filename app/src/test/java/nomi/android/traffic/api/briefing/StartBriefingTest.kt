@@ -127,6 +127,23 @@ class StartBriefingTest {
     }
 
     @Test
+    fun `printed walk minutes use the existing briefing letters`() {
+        val out = StartBriefing.consider(
+            scope(line = "88B"),
+            reading(
+                TransitKind.BUS,
+                TransitRow("88B", "2분"),
+                TransitRow("88B", "8분"),
+                walkMinutes = 5,
+            ),
+        )
+        assertEquals(
+            "88B번, 88B번 버스가 2분 후 도착합니다. 정류장까지는 걸어서 약 5분입니다. 다음은 88B번, 8분 후 도착입니다.",
+            out.request!!.text,
+        )
+    }
+
+    @Test
     fun `blank eta uses the no-info sentence`() {
         val out = StartBriefing.consider(
             scope(line = "88B"),
@@ -152,11 +169,16 @@ private fun reading(line: String, eta: String) = reading(TransitRow(line, eta))
 
 private fun reading(vararg rows: TransitRow) = reading(TransitKind.BUS, *rows)
 
-private fun reading(kind: TransitKind, vararg rows: TransitRow) = TransitReading(
+private fun reading(
+    kind: TransitKind,
+    vararg rows: TransitRow,
+    walkMinutes: Int? = null,
+) = TransitReading(
     source = ObservationSource.SCREEN,
     atMs = 1_700_000_000_000L,
     kind = kind,
     stop = "대우.삼성오피스텔",
     rows = rows.toList(),
     raw = "",
+    walkMinutes = walkMinutes,
 )

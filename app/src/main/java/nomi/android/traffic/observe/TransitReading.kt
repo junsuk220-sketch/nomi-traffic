@@ -11,6 +11,8 @@ data class TransitReading(
     val stop: String?,
     val rows: List<TransitRow>,
     val raw: String,
+    /** Printed walk minutes, if the tick actually showed them. Not guessed. */
+    val walkMinutes: Int? = null,
 )
 
 data class TransitRow(

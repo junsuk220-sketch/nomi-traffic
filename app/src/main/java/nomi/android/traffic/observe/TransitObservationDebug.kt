@@ -26,13 +26,14 @@ internal object TransitObservationDebug {
             "${row.line}:${row.eta}"
         }.ifEmpty { "-" }
         val key = listOf(
-            reading.source, reading.kind, reading.stop, rows,
+            reading.source, reading.kind, reading.stop, rows, reading.walkMinutes,
         ).joinToString("|")
         if (key == lastKey) return
         lastKey = key
         emit(
             "source=${reading.source} kind=${reading.kind} " +
                 "stop=${reading.stop ?: "-"} rows=$rows " +
+                "walk=${reading.walkMinutes ?: "-"} " +
                 "n=${reading.rows.size} raw=${clip(reading.raw)}",
         )
     }

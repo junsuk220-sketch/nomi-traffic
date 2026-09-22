@@ -14,12 +14,22 @@ internal object StartBriefingLine {
         kind: GuidanceKind,
         first: TransitRow,
         next: TransitRow?,
+        walkMinutes: Int? = null,
     ): String? {
         val line = first.line.trim()
         if (line.isEmpty()) return null
         val vehicle = vehicleClause(kind, line, first.eta) ?: return null
         val nextTail = next?.let { nextClause(kind, it) }
-        return if (nextTail == null) vehicle else "$vehicle $nextTail"
+        val walk = walkMinutes?.takeIf { it > 0 }
+        if (walk == null) {
+            return if (nextTail == null) vehicle else "$vehicle $nextTail"
+        }
+        val walkTail = if (kind == GuidanceKind.SUBWAY) {
+            "역까지는 걸어서 약 ${walk}분입니다."
+        } else {
+            "정류장까지는 걸어서 약 ${walk}분입니다."
+        }
+        return if (nextTail == null) "$vehicle $walkTail" else "$vehicle $walkTail $nextTail"
     }
 
     private fun vehicleClause(kind: GuidanceKind, line: String, eta: String): String? {
