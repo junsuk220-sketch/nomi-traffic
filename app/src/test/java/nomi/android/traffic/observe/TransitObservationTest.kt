@@ -154,6 +154,64 @@ class TransitObservationTest {
     }
 
     @Test
+    fun `live HUD without card end keeps 88B above 안내 중`() {
+        val reading = TransitObservation.fromScreen(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "도보 309m",
+                    "5분",
+                    "대우.삼성오피스텔 승차",
+                    "20155",
+                    "88B",
+                    "2분",
+                    "2정류장",
+                    "여유",
+                    "88B",
+                    "10분",
+                    "6정류장",
+                    "여유",
+                    "안내 중",
+                    "길안내를 시작합니다.",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+            atMs = 10L,
+        )!!
+        assertEquals(ObservationSource.SCREEN, reading.source)
+        assertEquals(TransitKind.BUS, reading.kind)
+        assertEquals("대우.삼성오피스텔", reading.stop)
+        assertEquals(listOf("88B", "88B"), reading.rows.map { it.line })
+        assertEquals(listOf("2분", "10분"), reading.rows.map { it.eta })
+        assertEquals(10L, reading.atMs)
+    }
+
+    @Test
+    fun `live HUD keeps 88B when 3호선 follows 안내 중`() {
+        val reading = TransitObservation.fromScreen(
+            packageName = NaverMapNotification.PACKAGE,
+            root = NaverSubwayAccessibilityParser.Node(
+                children = listOf(
+                    "대우.삼성오피스텔 승차",
+                    "88B",
+                    "2분",
+                    "2정류장",
+                    "여유",
+                    "88B",
+                    "10분",
+                    "6정류장",
+                    "여유",
+                    "안내 중",
+                    "대화역 3호선",
+                    "까지 이동",
+                ).map { NaverSubwayAccessibilityParser.Node(text = it) },
+            ),
+            atMs = 11L,
+        )!!
+        assertEquals(listOf("88B", "88B"), reading.rows.map { it.line })
+        assertTrue(reading.rows.none { it.line.contains("3") })
+    }
+
+    @Test
     fun `live sheet without card end does not leak the flatten`() {
         val reading = TransitObservation.fromScreen(
             packageName = NaverMapNotification.PACKAGE,
@@ -172,8 +230,10 @@ class TransitObservationTest {
                 ).map { NaverSubwayAccessibilityParser.Node(text = it) },
             ),
             atMs = 1L,
-        )
-        assertNull(reading)
+        )!!
+        assertEquals(listOf("88B"), reading.rows.map { it.line })
+        assertEquals(listOf("3분"), reading.rows.map { it.eta })
+        assertTrue(reading.rows.none { it.line == "88A" })
     }
 
     @Test

@@ -1,9 +1,11 @@
 package nomi.android.traffic.observe
 
 import nomi.android.traffic.NaverBusAccessibilityParser
+import nomi.android.traffic.NaverMapNotification
 import nomi.android.traffic.NaverMapsTransit
 import nomi.android.traffic.NaverNotificationParser
 import nomi.android.traffic.NaverSubwayAccessibilityParser
+import nomi.android.traffic.NaverTransitDestinationParser
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventType
 
@@ -26,12 +28,28 @@ object TransitObservation {
         root: NaverSubwayAccessibilityParser.Node,
         atMs: Long = 0L,
     ): TransitReading? {
-        val bus = NaverBusAccessibilityParser.parse(
-            packageName = packageName,
-            root = root,
-            timestampMillis = atMs,
-        ).firstOrNull()
-        if (bus != null) return toReading(ObservationSource.SCREEN, bus)
+        if (packageName != NaverMapNotification.PACKAGE) return null
+        if (!NaverTransitDestinationParser.isLiveGuidance(root)) return null
+        val blobs = flatten(root)
+        val scoped = liveScreenFacts(blobs)
+        val arrivals = NaverBusAccessibilityParser.arrivalsFromBlobs(scoped)
+        if (arrivals.isNotEmpty()) {
+            return TransitReading(
+                source = ObservationSource.SCREEN,
+                atMs = atMs,
+                kind = TransitKind.BUS,
+                stop = stopOf(scoped),
+                rows = arrivals.map { arrival ->
+                    TransitRow(
+                        line = arrival.line,
+                        eta = arrival.eta,
+                        occupancy = arrival.occupancy,
+                        stopsRemaining = arrival.stopsRemaining,
+                    )
+                },
+                raw = arrivals.joinToString(", ") { "${it.line} (${it.eta})" },
+            )
+        }
         val subway = NaverSubwayAccessibilityParser.parse(
             packageName = packageName,
             root = root,
@@ -40,6 +58,70 @@ object TransitObservation {
         if (subway != null) return toReading(ObservationSource.SCREEN, subway)
         return null
     }
+
+    /**
+     * Live HUD facts only. Includes the boarded vehicle printed above
+     * `안내 중` when that prefix is not an alt card. Does not require
+     * `안내 종료`. Cuts at the first alt boundary.
+     */
+    private fun liveScreenFacts(blobs: List<String>): List<String> {
+        val liveIdx = blobs.indexOfFirst { it == "안내 중" || it == "안내중" }
+        if (liveIdx < 0) return emptyList()
+        val cardEnd = blobs.indices.firstOrNull { it > liveIdx && isCardEnd(blobs[it]) }
+        val altAfter = blobs.indices.firstOrNull { it > liveIdx && isAltBoundary(blobs[it]) }
+        val until = cardEnd?.plus(1) ?: (altAfter ?: blobs.size)
+        val from = if (includeHudPrefix(blobs, liveIdx)) 0 else liveIdx
+        return blobs.subList(from, until)
+    }
+
+    private fun includeHudPrefix(blobs: List<String>, liveIdx: Int): Boolean {
+        val prefix = blobs.subList(0, liveIdx)
+        if (prefix.any { isAltBoundary(it) }) return false
+        for (i in 0 until liveIdx) {
+            if (isBusLine(blobs[i]) && busWaitFollows(blobs, i)) return true
+        }
+        return false
+    }
+
+    private fun stopOf(blobs: List<String>): String? {
+        for (blob in blobs) {
+            NaverNotificationParser.boardingStop(blob)?.let { return it }
+            if (blob.endsWith(" 승차")) {
+                val stop = blob.removeSuffix(" 승차").trim()
+                if (stop.isNotEmpty()) return stop
+            }
+        }
+        return null
+    }
+
+    private fun flatten(root: NaverSubwayAccessibilityParser.Node): List<String> {
+        val out = ArrayList<String>()
+        collect(root, out)
+        return out
+    }
+
+    private fun collect(node: NaverSubwayAccessibilityParser.Node, out: MutableList<String>) {
+        NaverSubwayAccessibilityParser.clean(node.text).takeIf { it.isNotEmpty() }?.let(out::add)
+        NaverSubwayAccessibilityParser.clean(node.contentDesc).takeIf { it.isNotEmpty() }?.let(out::add)
+        node.children.forEach { collect(it, out) }
+    }
+
+    private fun busWaitFollows(blobs: List<String>, lineIndex: Int): Boolean {
+        val window = blobs.subList(lineIndex + 1, minOf(blobs.size, lineIndex + 8))
+        return window.any { stopsOnly.matches(it) || minutesAndStops.matches(it) }
+    }
+
+    private fun isBusLine(blob: String): Boolean = busLine.matches(blob)
+
+    private fun isCardEnd(blob: String): Boolean =
+        blob == "안내 종료" || blob == "안내종료"
+
+    private fun isAltBoundary(blob: String): Boolean =
+        blob == "바로 안내시작" || blob == "최소시간" || blob == "최소환승"
+
+    private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val minutesAndStops = Regex("""^\d+\s*분\s*\d+\s*정류장""")
+    private val stopsOnly = Regex("""^\d+\s*정류장$""")
 
     private fun toReading(
         source: ObservationSource,
