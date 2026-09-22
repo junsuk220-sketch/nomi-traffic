@@ -12,8 +12,8 @@ android {
         applicationId = "nomi.traffic"
         minSdk = 26
         targetSdk = 35
-        versionCode = 94
-        versionName = "1.0.0-briefing-shadow"
+        versionCode = 95
+        versionName = "1.0.0-scope-bus-hud"
     }
 
     buildTypes {

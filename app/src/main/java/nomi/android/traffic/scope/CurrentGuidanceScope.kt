@@ -137,13 +137,25 @@ object CurrentGuidanceScope {
         val liveIdx = blobs.indexOfFirst { isLiveMarker(it) }
         if (liveIdx < 0) return emptyList()
         val cardEnd = blobs.indices.firstOrNull { it > liveIdx && isCardEndMarker(blobs[it]) }
-        if (cardEnd != null) return blobs.subList(liveIdx, cardEnd + 1)
         val altAfter = blobs.indices.firstOrNull { it > liveIdx && isAltBoundary(blobs[it]) }
-        val until = altAfter ?: blobs.size
-        val prefix = blobs.subList(0, liveIdx)
-        val hudPrefix = prefix.any { subwayCue(it) } && prefix.none { isAltBoundary(it) }
-        val from = if (hudPrefix) 0 else liveIdx
+        val until = cardEnd?.plus(1) ?: (altAfter ?: blobs.size)
+        val from = if (includeHudPrefix(blobs, liveIdx)) 0 else liveIdx
         return blobs.subList(from, until)
+    }
+
+    /**
+     * Live HUD prints the boarded vehicle above `안내 중`.
+     * Subway and bus wait boards both count. Alt cards in that
+     * prefix do not.
+     */
+    private fun includeHudPrefix(blobs: List<String>, liveIdx: Int): Boolean {
+        val prefix = blobs.subList(0, liveIdx)
+        if (prefix.any { isAltBoundary(it) }) return false
+        if (prefix.any { subwayCue(it) }) return true
+        for (i in 0 until liveIdx) {
+            if (isBusLine(blobs[i]) && busWaitFollows(blobs, i)) return true
+        }
+        return false
     }
 
     private fun readVehicle(blobs: List<String>): Vehicle? {

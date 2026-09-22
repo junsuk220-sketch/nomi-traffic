@@ -191,6 +191,58 @@ class CurrentGuidanceScopeTest {
     }
 
     @Test
+    fun `HUD 88B before 안내 중 stays 88B when 3호선 follows`() {
+        CurrentGuidanceScope.onScreen(
+            listOf(
+                "도보 313m",
+                "5분",
+                "대우.삼성오피스텔 승차",
+                "20155",
+                "88B",
+                "7분",
+                "5정류장",
+                "여유",
+                "88B",
+                "13분",
+                "8정류장",
+                "여유",
+                "안내 중",
+                "83번 21분",
+                "88B 환승1회 19분",
+            ),
+        )
+        val first = CurrentGuidanceScope.snapshot()
+        assertEquals("88B", first.line)
+        assertEquals(GuidanceKind.BUS, first.kind)
+        CurrentGuidanceScope.onScreen(
+            listOf(
+                "도보 313m",
+                "5분",
+                "대우.삼성오피스텔 승차",
+                "20155",
+                "88B",
+                "7분",
+                "5정류장",
+                "여유",
+                "88B",
+                "13분",
+                "8정류장",
+                "여유",
+                "안내 중",
+                "83번 21분",
+                "88B 환승1회 19분",
+                "대화역 3호선",
+                "까지 이동",
+            ),
+        )
+        val after = CurrentGuidanceScope.snapshot()
+        assertEquals("88B", after.line)
+        assertEquals(GuidanceKind.BUS, after.kind)
+        assertNotEquals("3호선", after.line)
+        assertEquals(first.generation, after.generation)
+    }
+
+    @Test
     fun `bus wait board without live or start phrase does not open scope`() {
         CurrentGuidanceScope.onNotification(
             title = "라페스타.먹자골목까지 걷기",
