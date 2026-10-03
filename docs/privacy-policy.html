@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index, follow">
+<title>개인정보처리방침 - 교통음성알림</title>
+<style>
+  :root {
+    --text: #1f2328;
+    --muted: #59636e;
+    --line: #d8dee4;
+    --bg: #ffffff;
+    --soft: #f6f8fa;
+    --accent: #0b6bcb;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR",
+      "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 64px;
+  }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 8px; }
+  h1 { font-size: 1.75rem; line-height: 1.35; margin: 0 0 8px; }
+  .app { font-size: 1.05rem; margin: 0; }
+  .meta { color: var(--muted); font-size: 0.95rem; margin: 8px 0 0; }
+  h2 {
+    font-size: 1.2rem;
+    line-height: 1.4;
+    margin: 36px 0 10px;
+    padding-top: 4px;
+  }
+  h3 { font-size: 1.02rem; margin: 20px 0 6px; }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  .box {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 12px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.95rem;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--soft); white-space: nowrap; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    background: var(--soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  a { color: var(--accent); }
+  footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); font-size: 0.9rem; }
+  @media (max-width: 520px) {
+    main { padding: 24px 16px 48px; }
+    h1 { font-size: 1.5rem; }
+    table, thead, tbody, tr, th, td { display: block; width: 100%; }
+    thead { display: none; }
+    tr { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+    th, td { border: none; border-bottom: 1px solid var(--line); }
+    td:last-child { border-bottom: none; }
+    td::before { content: attr(data-label); display: block; font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>개인정보처리방침</h1>
+  <p class="app">교통음성알림 (패키지명: <code>nomi.traffic</code>)</p>
+  <p class="meta">시행일: 2026년 10월 3일</p>
+</header>
+
+<h2>1. 개인정보처리방침</h2>
+<p>
+  이 개인정보처리방침은 Android 앱 「교통음성알림」(이하 "앱")이 사용자의 기기에서 어떤 정보에 접근하고,
+  그 정보를 어떤 목적으로 어떻게 처리·저장·전송하는지 설명합니다.
+  앱은 네이버 지도 또는 Google 지도가 보여 주는 대중교통 길안내 정보를 읽어,
+  버스·지하철 도착 정보 등을 음성으로 다시 알려 주는 앱입니다.
+</p>
+<div class="box">
+  <strong>요약</strong>
+  <ul>
+    <li>회원가입·로그인이 없으며, 이름·전화번호·이메일 등 개인정보를 입력받지 않습니다.</li>
+    <li>위치 권한과 마이크 권한을 요청하지 않으며, GPS 위치를 사용하지 않습니다.</li>
+    <li>개발자가 운영하는 서버가 없습니다. 앱이 읽은 지도 앱 화면 정보를 개발자에게 보내지 않습니다.</li>
+    <li>광고 SDK, 분석·통계 SDK, 충돌 보고 SDK(Firebase, Google Analytics, Crashlytics 등)를 사용하지 않습니다.</li>
+    <li>예외적으로, 서울 지하철 환승 안내 때 <strong>역 이름</strong>을 서울특별시 실시간 지하철 도착정보 API로 보내 도착 정보를 받아 옵니다(아래 10항).</li>
+    <li>앱 동작 기록과 최근 경로 목록은 사용자 기기 안의 앱 전용 저장소에만 저장되며, 앱을 삭제하면 함께 삭제됩니다.</li>
+  </ul>
+</div>
+
+<h2>2. 앱 및 개발자 식별</h2>
+<table>
+  <tbody>
+    <tr><th>앱 이름</th><td>교통음성알림</td></tr>
+    <tr><th>패키지명</th><td><code>nomi.traffic</code></td></tr>
+    <tr><th>배포</th><td>Google Play</td></tr>
+    <tr><th>개발자 연락처</th><td><a href="mailto:junsuk220@gmail.com">junsuk220@gmail.com</a></td></tr>
+  </tbody>
+</table>
+
+<h2>3. 문의 방법</h2>
+<p>
+  개인정보 처리에 관한 문의, 의견, 삭제 요청은 아래 이메일로 보내 주십시오.
+  앱에는 개발자 서버나 계정이 없으므로, 개발자가 사용자를 식별하거나 사용자의 기기 데이터를 조회할 수 없습니다.
+  문의하실 때 보내 주신 이메일 주소와 내용은 답변을 위해서만 사용합니다.
+</p>
+<p>이메일: <a href="mailto:junsuk220@gmail.com">junsuk220@gmail.com</a></p>
+
+<h2>4. 수집하는 개인정보</h2>
+<p>
+  앱은 개발자가 받아 보관하는 형태로 개인정보를 수집하지 않습니다.
+  회원가입, 로그인, 결제, 사용자 입력 양식, 파일 업로드 기능이 없습니다.
+  광고 ID, Android ID, 기기 일련번호, 전화번호 등 기기 식별자나 사용자 식별자를 읽지 않습니다.
+</p>
+<p>
+  다만 앱은 기능을 제공하기 위해 아래 5~10항의 정보에 기기 안에서 접근하고 처리하며,
+  일부는 기기 안에 저장하고, 서울 지하철 환승 안내 때에는 역 이름을 서울특별시 API로 전송합니다.
+  아래에서 각각을 구체적으로 설명합니다.
+</p>
+
+<h2>5. 앱이 접근하는 데이터 및 기기 정보</h2>
+<table>
+  <thead>
+    <tr><th>항목</th><th>접근하는 내용</th><th>목적</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td data-label="항목">접근성 서비스<br>(사용자가 직접 켜야 동작)</td>
+      <td data-label="접근하는 내용">네이버 지도·Google 지도 앱 화면에 표시된 텍스트와 일부 버튼 누름(예: "안내시작", "안내 종료")</td>
+      <td data-label="목적">길안내 상태와 버스·지하철 도착 정보를 파악해 음성 안내 생성</td>
+    </tr>
+    <tr>
+      <td data-label="항목">알림 접근<br>(사용자가 직접 허용해야 동작)</td>
+      <td data-label="접근하는 내용">네이버 지도·Google 지도가 띄우는 길안내 알림의 제목과 내용</td>
+      <td data-label="목적">길안내 시작·환승·하차 등 단계 파악</td>
+    </tr>
+    <tr>
+      <td data-label="항목">인터넷</td>
+      <td data-label="접근하는 내용">서울특별시 실시간 지하철 도착정보 API 요청</td>
+      <td data-label="목적">서울 지하철 환승 시 열차 도착 정보 안내</td>
+    </tr>
+    <tr>
+      <td data-label="항목">알림 표시</td>
+      <td data-label="접근하는 내용">앱 자체 안내 알림(예: 설정 안내) 표시</td>
+      <td data-label="목적">설정이 꺼져 있을 때 사용자에게 알림</td>
+    </tr>
+    <tr>
+      <td data-label="항목">절전 해제 유지(WAKE_LOCK)</td>
+      <td data-label="접근하는 내용">음성 안내 중 기기가 잠들지 않도록 유지</td>
+      <td data-label="목적">안내 음성이 끊기지 않게 함</td>
+    </tr>
+    <tr>
+      <td data-label="항목">설치된 앱 확인</td>
+      <td data-label="접근하는 내용">네이버 지도·Google 지도 설치 여부만 확인</td>
+      <td data-label="목적">해당 지도 앱 열기</td>
+    </tr>
+  </tbody>
+</table>
+<p>앱은 위치, 마이크, 카메라, 연락처, 저장소(사진·파일), 전화, SMS 권한을 요청하지 않습니다.</p>
+
+<h2>6. 접근성 서비스 사용 목적</h2>
+<p>
+  앱은 교통 안내 음성 제공을 위해, 사용자가 Android 설정에서 직접 활성화한 접근성 서비스를 통해
+  네이버 지도(<code>com.nhn.android.nmap</code>)와 Google 지도(<code>com.google.android.apps.maps</code>)
+  화면에 표시되는 교통 안내 정보를 기기에서 읽습니다.
+  접근성 서비스는 이 두 지도 앱에만 반응하도록 설정되어 있으며, 다른 앱의 화면은 읽지 않습니다.
+</p>
+<p>읽는 정보의 예:</p>
+<ul>
+  <li>버스 번호, 지하철 노선, 도착 예정 시간, 혼잡도</li>
+  <li>정류장·역 이름, 방면, 환승·하차 안내 문구, 도보 시간</li>
+  <li>목적지 이름, "안내 중" 표시, 안내 시작·종료 버튼 누름</li>
+</ul>
+<p>
+  읽은 정보는 기기 안에서 음성 안내 문장을 만드는 데 사용되며, 개발자 서버로 전송하거나
+  제3자에게 판매·제공하지 않습니다. 접근성 서비스로 화면을 조작하거나 대신 입력하지 않습니다.
+  접근성 서비스는 Android 설정 &gt; 접근성에서 언제든지 끌 수 있습니다.
+</p>
+
+<h2>7. 네이버/Google 지도 정보 처리 방식</h2>
+<h3>7-1. 기기 안에서의 처리</h3>
+<p>
+  지도 앱 화면과 알림에서 읽은 정보로 "88번 버스가 7분 후 도착합니다"와 같은 문장을 기기 안에서 만들고,
+  기기에 설정된 음성 합성(TTS) 엔진으로 읽어 줍니다.
+  음성 합성은 사용자가 기기에 설정한 TTS 엔진(예: Google 음성 서비스)이 처리하며,
+  그 엔진의 데이터 처리는 해당 엔진 제공자의 정책을 따릅니다.
+</p>
+<h3>7-2. 알림 접근의 범위</h3>
+<p>
+  Android의 알림 접근 기능은 구조상 모든 앱의 알림을 앱에 전달합니다.
+  앱은 네이버 지도와 Google 지도 이외 앱의 알림은 내용을 읽거나 저장하지 않고 즉시 무시합니다.
+  알림 접근은 Android 설정 &gt; 알림 &gt; 기기 및 앱 알림(기기마다 이름이 다를 수 있음)에서 끌 수 있습니다.
+</p>
+<h3>7-3. 기기 안에 저장되는 정보</h3>
+<ul>
+  <li>
+    <strong>초기 설정 상태</strong>: 설정 완료 여부, 지도 앱 알림 확인 여부.
+  </li>
+  <li>
+    <strong>최근 경로 목록</strong>: 지도 앱에서 길안내한 목적지 이름(주소가 포함될 수 있음), 지도 앱 종류, 마지막 사용 시각.
+    앱 첫 화면에서 최근 경로를 다시 열 수 있게 하기 위해 저장합니다.
+  </li>
+  <li>
+    <strong>앱 동작 기록(로그)</strong>: 음성 안내가 올바른 시점에 올바른 내용으로 나오는지 확인하고 오류를 분석하기 위해,
+    지도 앱 화면·알림에서 읽은 텍스트, 앱이 말한 안내 문장, 안내 처리 과정을 기록합니다.
+    Google 지도 화면의 경우 표시된 텍스트가 걸러지지 않고 기록될 수 있어,
+    지도 앱 화면에 함께 표시된 Google 계정 이름이나 이메일 주소, 주변 장소 정보, 지도 앱 알림 내용 등
+    교통 외 정보가 포함될 수 있습니다.
+  </li>
+</ul>
+<p>
+  이 정보는 모두 다른 앱이 접근할 수 없는 앱 전용 저장소에만 저장되며, 앱이 외부로 전송하지 않습니다.
+  개발자는 사용자 기기에 저장된 이 정보에 접근할 수 없습니다.
+</p>
+<h3>7-4. 지도 앱 열기</h3>
+<p>
+  사용자가 최근 경로를 누르면, 앱은 목적지 이름을 네이버 지도 또는 Google 지도 앱에 전달해 검색 화면을 엽니다.
+  이 전달은 기기 안의 앱 사이에서 이루어지며, 이후 지도 앱의 데이터 처리는 각 지도 앱의 개인정보처리방침을 따릅니다.
+</p>
+
+<h2>8. 위치정보 처리 여부</h2>
+<p>
+  앱은 위치 권한(정확한 위치·대략적인 위치)을 요청하지 않으며, GPS나 기기의 위치 서비스를 사용하지 않습니다.
+  앱이 다루는 정류장·역 이름과 목적지 이름은 사용자가 지도 앱에서 선택한 경로에 표시된 텍스트입니다.
+  다만 이 정보는 사용자가 이용 중인 경로를 나타내므로, 사용자가 있거나 갈 장소를 짐작하게 할 수 있습니다.
+  이 중 서울 지하철 역 이름이 외부로 전송되는 경우는 10항에서 설명합니다.
+</p>
+
+<h2>9. 음성/마이크 처리 여부</h2>
+<p>
+  앱은 마이크 권한을 요청하지 않으며, 사용자의 음성을 녹음·저장·전송하지 않습니다.
+  앱의 음성은 기기의 음성 합성(TTS) 엔진으로 안내 문장을 읽어 주는 출력 기능뿐입니다.
+</p>
+
+<h2>10. 네트워크 전송 여부</h2>
+<p>
+  앱이 기기 밖으로 데이터를 보내는 경우는 아래 한 가지뿐입니다.
+  개발자가 운영하는 서버는 없으며, 그 밖의 외부 서버로 데이터를 보내지 않습니다.
+</p>
+<table>
+  <tbody>
+    <tr><th>받는 곳</th><td>서울특별시 열린데이터광장 실시간 지하철 도착정보 API (<code>swopenapi.seoul.go.kr</code>)</td></tr>
+    <tr><th>보내는 때</th><td>네이버 지도 길안내 중 서울 지하철로 환승하거나 지하철 승차역 부근에 왔을 때</td></tr>
+    <tr><th>보내는 정보</th><td>
+      <ul>
+        <li>역 이름(지도 앱 화면에서 읽은 승차·환승역 이름)</li>
+        <li>앱의 API 인증키(앱에 포함된 값으로, 사용자 정보가 아님)</li>
+        <li>인터넷 통신 특성상 함께 전달되는 정보: 기기의 IP 주소, 기본 HTTP 요청 정보(기기 모델명과 Android 버전이 포함될 수 있는 User-Agent)</li>
+      </ul>
+    </td></tr>
+    <tr><th>보내지 않는 정보</th><td>위치 좌표, 목적지, 이동 경로 전체, 계정 정보, 기기 식별자</td></tr>
+    <tr><th>목적</th><td>해당 역의 실시간 열차 도착 정보를 받아 음성으로 안내</td></tr>
+    <tr><th>전송 방식</th><td>서울특별시 API가 제공하는 방식에 따라 <strong>암호화되지 않은 HTTP</strong>로 전송됩니다.</td></tr>
+    <tr><th>받는 곳의 처리</th><td>서울특별시 서버에서의 처리(접속 기록 등)는 서울특별시의 개인정보 처리 방침을 따릅니다.</td></tr>
+  </tbody>
+</table>
+<p>
+  받아 온 도착 정보는 음성 안내에 사용되며, 7-3항의 앱 동작 기록에 남을 수 있습니다.
+  이 기능을 원하지 않으시면 앱의 접근성 서비스를 끄시면 됩니다.
+</p>
+
+<h2>11. 제3자 제공 및 공유</h2>
+<p>
+  앱은 사용자 데이터를 판매하거나, 광고·마케팅 목적으로 제3자에게 제공하거나 공유하지 않습니다.
+  앱이 기기 밖으로 보내는 정보는 10항의 서울특별시 API 요청뿐이며, 이는 사용자에게 열차 도착 정보를 안내하기 위한 조회입니다.
+</p>
+<p>
+  Android의 자동 백업은 사용자가 기기 설정에서 켜 둔 경우 앱 데이터(7-3항의 최근 경로 목록과 앱 동작 기록 포함,
+  초기 설정 상태 제외)를 사용자의 Google 계정 백업에 포함할 수 있습니다.
+  이 백업은 Android와 Google이 사용자 계정에 보관하는 것으로, 개발자는 접근할 수 없습니다.
+  기기 설정의 백업 메뉴에서 끌 수 있습니다.
+</p>
+
+<h2>12. 광고 및 광고 SDK</h2>
+<p>앱에는 광고가 없으며, 광고 SDK를 포함하지 않습니다. 광고 ID를 읽지 않습니다.</p>
+
+<h2>13. 분석/통계 SDK</h2>
+<p>
+  앱은 Firebase, Google Analytics, Crashlytics 등 분석·통계·충돌 보고 SDK를 포함하지 않습니다.
+  앱이 사용하는 외부 라이브러리는 화면 구성과 데이터 형식 변환을 위한 것(AndroidX, Material Components, kotlinx.serialization)이며,
+  이 라이브러리들은 데이터를 외부로 전송하지 않습니다.
+</p>
+
+<h2>14. 데이터 보관 및 삭제</h2>
+<ul>
+  <li>개발자 서버가 없으므로, 앱을 삭제한 뒤 개발자 쪽에 사용자 데이터가 남지 않습니다.</li>
+  <li>
+    기기 안의 앱 동작 기록 중 일부는 용량(2~4MB) 또는 기간(24시간) 제한에 따라 오래된 내용부터 자동으로 지워지고,
+    나머지 기록과 최근 경로 목록은 앱 삭제 또는 앱 데이터 삭제 때까지 유지됩니다.
+  </li>
+  <li>
+    삭제 방법: 앱을 삭제하거나, Android 설정 &gt; 애플리케이션 &gt; 교통음성알림 &gt; 저장공간 &gt; 데이터 삭제를 누르면
+    기기 안에 저장된 모든 앱 데이터가 삭제됩니다.
+  </li>
+  <li>Google 계정 백업에 포함된 앱 데이터는 Google 계정·기기 백업 설정에서 관리할 수 있습니다.</li>
+  <li>서울특별시 API로 전송된 요청의 보관은 서울특별시의 방침을 따르며, 개발자는 이를 보관하지 않습니다.</li>
+</ul>
+
+<h2>15. 데이터 보안</h2>
+<ul>
+  <li>기기 안의 데이터는 Android가 앱마다 분리해 보호하는 앱 전용 저장소에 저장되어, 다른 앱이 읽을 수 없습니다.</li>
+  <li>앱은 외부 저장소(사진·파일 공간)에 데이터를 쓰지 않습니다.</li>
+  <li>서울특별시 API 요청은 10항에 적은 대로 암호화되지 않은 HTTP로 전송됩니다. 이 요청에는 역 이름만 포함되며 계정 정보나 위치 좌표는 포함되지 않습니다.</li>
+</ul>
+
+<h2>16. 아동 관련 사항</h2>
+<p>
+  앱은 아동을 대상으로 하지 않으며, 아동의 개인정보를 의도적으로 수집하지 않습니다.
+  앱은 어떤 사용자에게서도 개인정보를 입력받지 않습니다.
+</p>
+
+<h2>17. 개인정보처리방침 변경</h2>
+<p>
+  앱의 기능이나 데이터 처리 방식이 바뀌면 이 개인정보처리방침을 갱신하고, 이 페이지의 시행일을 함께 바꿉니다.
+  중요한 변경이 있으면 앱 업데이트 내용 또는 이 페이지를 통해 알립니다.
+</p>
+
+<h2>18. 문의처</h2>
+<p>
+  교통음성알림 개발자<br>
+  이메일: <a href="mailto:junsuk220@gmail.com">junsuk220@gmail.com</a>
+</p>
+
+<footer>
+  <p>교통음성알림 개인정보처리방침 · 시행일 2026년 10월 3일</p>
+</footer>
+</main>
+</body>
+</html>
