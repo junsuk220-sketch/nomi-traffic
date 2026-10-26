@@ -10,7 +10,7 @@ import nomi.android.traffic.scope.GuidanceSnapshot
  */
 internal object StartBriefingShadowDebug {
     const val TAG = "BRIEFING_SHADOW"
-    private const val BUILD = "vc94-briefing-shadow"
+    private const val BUILD = "vc103-briefing-voice"
 
     @Volatile
     private var lastKey: String? = null

@@ -2,6 +2,8 @@ package nomi.android.traffic
 
 import android.app.Notification
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -9,9 +11,23 @@ import android.util.Log
 import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.android.traffic.api.briefing.StartBriefingShadow
 import nomi.android.traffic.api.briefing.StartBriefingShadowDebug
+import nomi.android.traffic.api.bustransfer.BusTransferDebug
+import nomi.android.traffic.api.bustransfer.BusTransferShadow
+import nomi.android.traffic.api.transfer.TransferShadow
+import nomi.android.traffic.api.transfer.TransferShadowDebug
 import nomi.android.traffic.api.eta.EtaShadow
+import nomi.android.traffic.api.fastcar.FastCarDebug
+import nomi.android.traffic.api.nexttrain.NextTrainDebug
+import nomi.android.traffic.api.fastcar.FastCarShadow
+import nomi.android.traffic.api.google.GoogleFeed
+import nomi.android.traffic.api.google.read.GoogleStepReader
+import nomi.android.traffic.setupnudge.SetupNudgeShadow
+import nomi.traffic.MapAppNotifyAccess
+import nomi.android.traffic.api.nextbus.NextBusNoInfoDebug
+import nomi.android.traffic.api.nextbus.NextBusNoInfoShadow
 import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
+import nomi.android.traffic.observe.TransitReading
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
 import nomi.android.traffic.speech.SpeechLedger
@@ -25,24 +41,71 @@ import nomi.product.nav.NavigationEventType
  */
 class NaverNavigationNotificationListenerService : NotificationListenerService() {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     override fun onListenerConnected() {
         Log.i(NaverMapNotification.TAG, "listener connected")
         NaverRideObservationLog.attach(filesDir)
+        GoogleRideObservationLog.attach(filesDir)
+        try { GoogleFeed.attach(filesDir) } catch (_: Throwable) {}
         EventFirstEngine.attach(filesDir)
         NavigationEventVoice.prepare(this)
         CurrentGuidanceScopeDebug.emit("feed_attached notification")
         TransitObservationDebug.emit("feed_attached notification")
         VehicleTrackingDebug.emit("feed_attached notification")
         StartBriefingShadowDebug.emit("feed_attached notification")
+        TransferShadowDebug.attach(filesDir)
+        TransferShadowDebug.emit("feed_attached notification")
+        NextBusNoInfoDebug.attach(filesDir)
+        NextBusNoInfoDebug.emit("feed_attached notification")
+        FastCarDebug.attach(filesDir)
+        FastCarDebug.emit("feed_attached notification")
+        NextTrainDebug.attach(filesDir)
+        NextTrainDebug.emit("feed_attached notification")
+        BusTransferDebug.attach(filesDir)
+        BusTransferDebug.emit("feed_attached notification")
+        NaverTripStartDebug.attach(filesDir)
         activeNotifications.orEmpty().forEach { onNotificationPosted(it) }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
-        if (sbn.packageName == GoogleMapsTransit.PACKAGE) return
+        try {
+            noteMapNotifySeen(sbn.packageName)
+        } catch (_: Throwable) {
+        }
+        if (sbn.packageName == GoogleMapsTransit.PACKAGE) {
+            recordGoogleNotification(sbn)
+            try {
+                if (sbn.isOngoing) {
+                    val extras = sbn.notification.extras
+                    GoogleFeed.onPosted(
+                        extraText(extras, Notification.EXTRA_TITLE),
+                        extraText(extras, Notification.EXTRA_TEXT),
+                        extraText(extras, Notification.EXTRA_SUB_TEXT),
+                    )
+                }
+            } catch (_: Throwable) {
+            }
+            try {
+                if (sbn.isOngoing && isGoogleGuidance(sbn)) SetupNudgeShadow.onGoogleGuidance(this)
+            } catch (_: Throwable) {
+            }
+            return
+        }
         if (sbn.packageName != NaverMapNotification.PACKAGE) return
+        NavigationEventVoice.tickStartBrief()
         val channel = sbn.notification.channelId
         if (!NaverMapNotification.isWatchedChannel(channel)) return
+        val postedTitle = extraText(sbn.notification.extras, Notification.EXTRA_TITLE)
+        if (NaverGuidanceRemoved.onPosted(channel, postedTitle)) {
+            NaverTripStartDebug.note("card_reposted_keep title=[${postedTitle.orEmpty().take(40)}]")
+            Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] guidance card re-posted, guidance continues")
+        }
+        try {
+            SetupNudgeShadow.onNaverGuidance(this)
+        } catch (_: Throwable) {
+        }
         if (channel == NaverMapNotification.CHANNEL_WALK) {
             recordRideObservation(sbn, channel)
             noteNearBoard(sbn)
@@ -53,6 +116,21 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
         if (sbn == null) return
+        if (sbn.packageName == GoogleMapsTransit.PACKAGE) {
+            try {
+                GoogleRideObservationLog.recordNotificationRemoved(
+                    System.currentTimeMillis(),
+                    sbn.id,
+                    sbn.notification.channelId,
+                )
+            } catch (_: Throwable) {
+            }
+            try {
+                if (sbn.isOngoing) GoogleFeed.onEnded()
+            } catch (_: Throwable) {
+            }
+            return
+        }
         if (sbn.packageName != NaverMapNotification.PACKAGE) return
         val channel = sbn.notification.channelId
         if (!NaverMapNotification.isWatchedChannel(channel)) return
@@ -68,9 +146,27 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
             channel = channel,
         )
         RouteCardAccess.naverIntake(this).onNotificationRemoved(sbn.id)
+        val title = sbn.notification.extras
+            ?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()
+        if (NaverGuidanceRemoved.endsGuidance(channel, title)) {
+            NaverTripStartDebug.note("card_removed_hold title=[${title.orEmpty().take(40)}]")
+            NaverGuidanceRemoved.hold(System.currentTimeMillis()) {
+                RouteCardAccess.naverIntake(this).onGuidanceEnded()
+                NaverTripStartSession.reset()
+                NaverTripStartCache.clear()
+                NavigationEventVoice.onNaverGuidanceEnded()
+                NaverTripStartDebug.note("card_removed_end title=[${title.orEmpty().take(40)}]")
+                Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] guidance card removed, guidance ended title=$title")
+            }
+            mainHandler.postDelayed(
+                { NaverGuidanceRemoved.expire(System.currentTimeMillis()) },
+                NaverGuidanceRemoved.REPOST_GRACE_MS + 100L,
+            )
+        }
     }
 
     private fun logPosted(sbn: StatusBarNotification, channel: String) {
+        NaverTripStartSession.confirm(System.currentTimeMillis())
         val extras = sbn.notification.extras
         val title = extraText(extras, Notification.EXTRA_TITLE)
         val text = extraText(extras, Notification.EXTRA_TEXT)
@@ -85,6 +181,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val nowbarSecondary = extraText(extras, NaverMapNotification.EXTRA_NOWBAR_SECONDARY)
         val primary = extraText(extras, NaverMapNotification.EXTRA_PRIMARY)
         val chipExpandedText = chip
+        var transferReading: TransitReading? = null
         try {
             val reading = TransitObservation.fromNotification(
                 NaverNotificationParser.Snapshot(
@@ -101,6 +198,7 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                     timestampMillis = System.currentTimeMillis(),
                 ),
             )
+            transferReading = reading
             TransitObservationDebug.emit(reading)
             val nowMs = System.currentTimeMillis()
             val scope = CurrentGuidanceScope.snapshot()
@@ -111,7 +209,30 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                 NavigationEventVoice.speechLedger() ?: SpeechLedger(),
                 nowMs,
             )
-            StartBriefingShadow.tick(scope, reading)
+        } catch (_: Throwable) {
+        }
+        try {
+            TransferShadow.tick(listOfNotNull(title, text, bigText), transferReading)
+        } catch (_: Throwable) {
+        }
+        try {
+            BusTransferShadow.tick(listOfNotNull(title, text, bigText), transferReading)
+        } catch (_: Throwable) {
+        }
+        try {
+            val scope = CurrentGuidanceScope.snapshot()
+            StartBriefingShadow.tick(scope, transferReading)
+        } catch (_: Throwable) {
+        }
+        try {
+            NextBusNoInfoShadow.tickCues(
+                listOfNotNull(title, text, bigText),
+                System.currentTimeMillis(),
+            )
+        } catch (_: Throwable) {
+        }
+        try {
+            FastCarShadow.tick(title, listOfNotNull(text, bigText))
         } catch (_: Throwable) {
         }
         NaverRideObservationLog.recordNotification(
@@ -181,6 +302,9 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                     "action=${event.action} " +
                     "raw=${event.rawText}",
             )
+            // Riding latch is not speech: sheet wait boards still arrive via a11y
+            // while Event-First owns 302 judging, so this must always run.
+            NavigationEventVoice.noteNaverBusRiding(title)
             if (eventFirstOwnsSpeech) {
                 Log.i(NaverMapNotification.TAG, "[EVENT_FIRST] legacy 302 judging skipped")
             } else {
@@ -190,12 +314,19 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
                         NavigationEventVoice.noteNaverPrepareAlight(it)
                         NavigationEventVoice.noteNaverAlightStop(it)
                     }
+                NavigationEventVoice.noteNaverBusAlight(title)
+                NavigationEventVoice.noteNaverSubwayTransfer(title)
                 val startHint = listOf(title, text, nowbarPrimary, chip)
                     .any { NaverTripStartParser.isStartPhrase(it) }
                 if (startHint) {
                     NavigationEventVoice.armNaverTripStart()
                     NavigationEventVoice.pinNaverFromTripCache()
                     Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] notification start phrase")
+                }
+                NaverFirstLeg.fromWalkTitle(title)?.let { leg ->
+                    if (NaverTripStartSession.noteFirstLeg(leg, System.currentTimeMillis())) {
+                        Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] first leg ${leg.label()} from 302")
+                    }
                 }
                 // Do not re-arm trip start on every 302 ETA update — that only belongs
                 // on the first live edge / start phrase.
@@ -240,6 +371,40 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
         val bus = text ?: secondary ?: nowbarSecondary
         return "busArrival=${bus.orEmpty()} primary=${primary.orEmpty()} " +
             "secondary=${secondary.orEmpty()} nowbarSecondary=${nowbarSecondary.orEmpty()}"
+    }
+
+    private fun recordGoogleNotification(sbn: StatusBarNotification) {
+        try {
+            val extras = sbn.notification.extras
+            val fields = LinkedHashMap<String, String?>()
+            for (key in extras.keySet()) {
+                val value = extras.get(key)
+                if (value is CharSequence) fields[key] = value.toString()
+            }
+            GoogleRideObservationLog.recordNotification(
+                System.currentTimeMillis(),
+                sbn.id,
+                sbn.notification.channelId,
+                fields,
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
+    /** A notification from the map app arrived: its notification switch is on. */
+    private fun noteMapNotifySeen(pkg: String) {
+        if (pkg != MapAppNotifyAccess.GOOGLE_MAPS && pkg != MapAppNotifyAccess.NAVER_MAP) return
+        if (MapAppNotifyAccess.isConfirmed(this, pkg)) return
+        MapAppNotifyAccess.markConfirmed(this, pkg)
+    }
+
+    private fun isGoogleGuidance(sbn: StatusBarNotification): Boolean {
+        val extras = sbn.notification.extras
+        return GoogleStepReader.read(
+            extraText(extras, Notification.EXTRA_TITLE),
+            extraText(extras, Notification.EXTRA_TEXT),
+            extraText(extras, Notification.EXTRA_SUB_TEXT),
+        ) != null
     }
 
     private fun extraText(extras: Bundle, key: String): String? {

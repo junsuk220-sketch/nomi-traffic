@@ -51,6 +51,10 @@ internal object NaverRideObservationLog {
     }
 
     fun attach(filesDir: File) {
+        if (!FieldLogs.enabled) {
+            enabled = false
+            return
+        }
         synchronized(lock) {
             dir = filesDir
             if (!enabled && File(filesDir, FLAG_NAME).exists()) {

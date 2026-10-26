@@ -370,8 +370,9 @@ class BusWaitCore {
             if (previous.line != candidate.line) return false
             val previousEta = TransitSoonEta.minutes(previous.eta) ?: return false
             val candidateEta = TransitSoonEta.minutes(candidate.eta) ?: return false
-            // After 곧(0), any ETA ≥2 is the next bus of the same line.
-            if (previousEta == 0 && candidateEta >= 2) return false
+            // After 곧(0) or 1분, any ETA ≥2 is the next bus of the same line.
+            // 1분 is the last rung before the bus; a rise past it is not the same bus.
+            if (previousEta <= 1 && candidateEta >= 2) return false
             // ETA jumping upward beyond slack = missed / next vehicle (or heavy delay).
             if (candidateEta > previousEta + ETA_SLACK_MINUTES) return false
             val previousStops = previous.stopsRemaining

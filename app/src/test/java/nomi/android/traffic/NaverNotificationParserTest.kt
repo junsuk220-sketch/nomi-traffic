@@ -30,7 +30,7 @@ class NaverNotificationParserTest {
         assertEquals("3분", arrivals[0].eta)
         assertEquals("21분", arrivals[1].eta)
         assertEquals(
-            "3호선 오금행 열차가 3분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
+            "3호선 오금행 열차가 5분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertEquals(

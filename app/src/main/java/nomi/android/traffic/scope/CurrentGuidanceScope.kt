@@ -13,6 +13,11 @@ object CurrentGuidanceScope {
     private var generation = 0
     private var kind = GuidanceKind.NONE
     private var line: String? = null
+    /** Set on 길안내를 종료합니다. Start-phrase 302 inside the leftover window is ignored. */
+    private var closedAtMs = 0L
+
+    /** Test clock. Production uses wall time. */
+    internal var clockMs: () -> Long = { System.currentTimeMillis() }
 
     fun snapshot(): GuidanceSnapshot = synchronized(lock) {
         snapLocked()
@@ -38,6 +43,9 @@ object CurrentGuidanceScope {
             if (opening) {
                 generation += 1
                 active = true
+                closedAtMs = 0L
+                kind = GuidanceKind.NONE
+                line = null
             }
             val selected = selectedRange(cleaned)
             val vehicle = readVehicle(selected)
@@ -62,22 +70,45 @@ object CurrentGuidanceScope {
                 return
             }
             if (fields.none { isStartPhrase(it) }) {
+                if (active && line == null) {
+                    val vehicle = uniqueNotificationVehicle(fields)
+                    if (vehicle != null) {
+                        kind = vehicle.kind
+                        line = vehicle.line
+                        debug(before, "notification", "wait_fill", "-", hasAlt, alts)
+                        return
+                    }
+                }
                 debug(before, "notification", "no_start", "-", hasAlt, alts)
+                return
+            }
+            if (leftoverStartLocked()) {
+                debug(before, "notification", "leftover_start", "-", hasAlt, alts)
                 return
             }
             val opening = !active
             if (opening) {
                 generation += 1
                 active = true
+                closedAtMs = 0L
+                kind = GuidanceKind.NONE
+                line = null
+            } else {
+                val incoming = uniqueNotificationVehicle(fields)
+                if (incoming != null && incoming.line != line) {
+                    generation += 1
+                    kind = GuidanceKind.NONE
+                    line = null
+                }
             }
             if (line == null) {
-                val vehicle = readVehicle(fields)
+                val vehicle = uniqueNotificationVehicle(fields)
                 if (vehicle != null) {
                     kind = vehicle.kind
                     line = vehicle.line
                 }
             }
-            val cue = if (opening) "start_phrase" else "start_keep"
+            val cue = if (opening || before.generation != generation) "start_phrase" else "start_keep"
             debug(before, "notification", cue, CurrentGuidanceScopeDebug.clip(fields), hasAlt, alts)
         }
     }
@@ -89,6 +120,8 @@ object CurrentGuidanceScope {
             generation = 0
             kind = GuidanceKind.NONE
             line = null
+            closedAtMs = 0L
+            clockMs = { System.currentTimeMillis() }
         }
         CurrentGuidanceScopeDebug.resetForTest()
     }
@@ -129,6 +162,12 @@ object CurrentGuidanceScope {
         active = false
         kind = GuidanceKind.NONE
         line = null
+        closedAtMs = clockMs()
+    }
+
+    private fun leftoverStartLocked(): Boolean {
+        if (closedAtMs == 0L) return false
+        return clockMs() - closedAtMs < LEFTOVER_START_MS
     }
 
     private data class Vehicle(val kind: GuidanceKind, val line: String)
@@ -216,6 +255,28 @@ object CurrentGuidanceScope {
 
     private fun isBusLine(blob: String): Boolean = busLine.matches(blob)
 
+    /**
+     * 302 wait boards print `999 (9분)` in one blob. Screen flatten
+     * still uses the exact line token plus a following stop count.
+     * Two buses in one 302 are not this trip yet — the live board picks.
+     */
+    private fun uniqueNotificationVehicle(fields: List<String>): Vehicle? {
+        val found = LinkedHashMap<String, Vehicle>()
+        readVehicle(fields)?.let { found[it.line] = it }
+        for (blob in fields) {
+            for (match in busEtaToken.findAll(blob)) {
+                val id = match.groupValues[1].trim()
+                if (id.isNotEmpty()) {
+                    found.putIfAbsent(id, Vehicle(GuidanceKind.BUS, id))
+                }
+            }
+        }
+        if (found.size != 1) return null
+        return found.values.first()
+    }
+
+    internal const val LEFTOVER_START_MS = 8_000L
+
     private val subwayBoard =
         Regex("""(\d+호선|[가-힣A-Za-z0-9]+선|GTX-[A-Za-z]).*승차""")
     private val subwayUntil =
@@ -225,6 +286,8 @@ object CurrentGuidanceScope {
     private val subwayToken =
         Regex("""(\d+호선|GTX-[A-Za-z])""")
     private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val busEtaToken =
+        Regex("""([A-Za-z]?\d{1,4}[A-Za-z]?)\s*\(\s*(?:\d+\s*분|곧)""")
     private val minutesAndStops = Regex("""^\d+\s*분\s*\d+\s*정류장""")
     private val stopsOnly = Regex("""^\d+\s*정류장$""")
     private val startPhrase = Regex("""길\s*안내를\s*시작""")

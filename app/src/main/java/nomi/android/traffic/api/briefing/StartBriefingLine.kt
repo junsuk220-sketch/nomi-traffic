@@ -18,7 +18,7 @@ internal object StartBriefingLine {
     ): String? {
         val line = first.line.trim()
         if (line.isEmpty()) return null
-        val vehicle = vehicleClause(kind, line, first.eta) ?: return null
+        val vehicle = vehicleClause(kind, line, first.eta, first.service) ?: return null
         val nextTail = next?.let { nextClause(kind, it) }
         val walk = walkMinutes?.takeIf { it > 0 }
         if (walk == null) {
@@ -32,18 +32,25 @@ internal object StartBriefingLine {
         return if (nextTail == null) "$vehicle $walkTail" else "$vehicle $walkTail $nextTail"
     }
 
-    private fun vehicleClause(kind: GuidanceKind, line: String, eta: String): String? {
+    private fun vehicleClause(
+        kind: GuidanceKind,
+        line: String,
+        eta: String,
+        service: String?,
+    ): String? {
         val subway = kind == GuidanceKind.SUBWAY
+        val named = namedSubway(line, service)
         if (eta.isBlank()) {
             return if (subway) {
-                "$line 열차 도착 예정 정보가 없습니다."
+                if (named == line) "$line 열차 도착 예정 정보가 없습니다."
+                else "$named 열차 도착 예정 정보가 없습니다."
             } else {
                 "${line}번 버스 도착 예정 정보가 없습니다."
             }
         }
         if (TransitSoonEta.matches(eta)) {
             return if (subway) {
-                "$line, 곧 도착합니다."
+                "$named, 곧 도착합니다."
             } else {
                 "${line}번, ${line}번 버스, 곧 도착합니다."
             }
@@ -51,7 +58,8 @@ internal object StartBriefingLine {
         val minutes = TransitSoonEta.minutes(eta) ?: return null
         if (minutes < 1) return null
         return if (subway) {
-            "${subwaySubject(line)} ${minutes}분 후 출발합니다."
+            if (named == line) "${subwaySubject(line)} ${minutes}분 후 출발합니다."
+            else "${named}이 ${minutes}분 후 출발합니다."
         } else {
             "${line}번, ${line}번 버스가 ${minutes}분 후 도착합니다."
         }
@@ -59,17 +67,27 @@ internal object StartBriefingLine {
 
     private fun nextClause(kind: GuidanceKind, next: TransitRow): String? {
         val subway = kind == GuidanceKind.SUBWAY
+        val service = next.service?.trim().orEmpty()
         if (TransitSoonEta.matches(next.eta)) {
-            return if (subway) "다음 열차는 곧 도착합니다."
-            else "다음은 ${next.line}번, 곧 도착합니다."
+            return if (subway) {
+                if (service.isEmpty()) "다음 열차는 곧 도착합니다."
+                else "다음 열차는 $service, 곧 도착합니다."
+            } else "다음은 ${next.line}번, 곧 도착합니다."
         }
         val minutes = TransitSoonEta.minutes(next.eta) ?: return null
         if (minutes < 1) return null
         return if (subway) {
-            "다음 열차는 ${minutes}분 후 도착입니다."
+            if (service.isEmpty()) "다음 열차는 ${minutes}분 후 도착입니다."
+            else "다음 열차는 $service, ${minutes}분 후 도착입니다."
         } else {
             "다음은 ${next.line}번, ${minutes}분 후 도착입니다."
         }
+    }
+
+    /** Service is spoken only when the source named it. Otherwise the line alone, as before. */
+    private fun namedSubway(line: String, service: String?): String {
+        val kind = service?.trim().orEmpty()
+        return if (kind.isEmpty()) line else "$line $kind"
     }
 
     private fun subwaySubject(line: String): String =

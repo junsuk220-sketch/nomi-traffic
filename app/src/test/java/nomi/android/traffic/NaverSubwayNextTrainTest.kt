@@ -10,12 +10,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Constitution: subway stages reopen only after `(도착)` and a later clock head.
+ * Subway stages reopen on a later clock head, or after `(도착)` on the first
+ * clock head / a relative `2분` or more. `(도착)` itself is never a rung.
  */
 class NaverSubwayNextTrainTest {
 
     @Test
-    fun `countdown through arrived does not reset stages`() {
+    fun `countdown through arrived then the next train counts again`() {
         val gate = NavigationEventSpeechGate()
         assertTrue(
             gate.acceptNaverSubwayWalkBrief(
@@ -25,9 +26,59 @@ class NaverSubwayNextTrainTest {
         assertTrue(gate.accept(subway("5분")))
         assertTrue(gate.accept(subway("2분")))
         assertTrue(gate.accept(subway("곧")))
-        assertFalse(gate.accept(arrived()))
-        assertFalse(gate.accept(subway("2분")))
-        assertFalse(gate.accept(subway("9분")))
+        assertTrue(gate.isArrivedOnly(arrived()))
+        gate.rememberNaverSubwayClocks(arrived())
+        val next = subway("2분")
+        gate.rememberNaverSubwayClocks(next)
+        assertTrue(gate.accept(next))
+    }
+
+    @Test
+    fun `soon right after arrived is the same train`() {
+        val gate = NavigationEventSpeechGate()
+        assertTrue(gate.accept(subway("곧")))
+        gate.rememberNaverSubwayClocks(arrived())
+        val flicker = soon()
+        gate.rememberNaverSubwayClocks(flicker)
+        assertFalse(gate.accept(flicker))
+    }
+
+    @Test
+    fun `field 2026-10-02 relative first train then clocks for the next train`() {
+        // 17:13 오금행 (1분) → (곧 도착) → (도착) → 17:15 오금행 (17:20) 5분 → (2분) → (1분).
+        val gate = NavigationEventSpeechGate()
+        val first = subway("곧")
+        gate.rememberNaverSubwayClocks(first)
+        assertTrue(gate.accept(first))
+        gate.rememberNaverSubwayClocks(arrived())
+        val five = subway("5분", clocks = listOf("17:20", "17:30", "17:37"))
+        gate.rememberNaverSubwayClocks(five)
+        assertTrue(gate.accept(five))
+        val two = subway("2분")
+        gate.rememberNaverSubwayClocks(two)
+        assertTrue(gate.accept(two))
+        val soon = subway("곧")
+        gate.rememberNaverSubwayClocks(soon)
+        assertTrue(gate.accept(soon))
+    }
+
+    @Test
+    fun `field 2026-10-02 stale arrived does not eat the next train`() {
+        // 17:21 오금행 (17:30) 9분 → 17:22 stale (도착) → 17:22 (17:30) again → 17:27 (2분).
+        val gate = NavigationEventSpeechGate()
+        val nine = subway("9분", clocks = listOf("17:30", "17:37", "17:46"))
+        gate.rememberNaverSubwayClocks(nine)
+        assertTrue(gate.accept(nine))
+        gate.rememberNaverSubwayClocks(arrived())
+        val again = subway("8분", clocks = listOf("17:30", "17:37", "17:46"))
+        gate.rememberNaverSubwayClocks(again)
+        assertFalse(gate.accept(again))
+        val two = subway("2분")
+        gate.rememberNaverSubwayClocks(two)
+        assertTrue(gate.accept(two))
+        val soon = subway("곧")
+        gate.rememberNaverSubwayClocks(soon)
+        assertTrue(gate.accept(soon))
     }
 
     @Test
@@ -47,14 +98,14 @@ class NaverSubwayNextTrainTest {
     }
 
     @Test
-    fun `clock head moving without arrived does not reset`() {
+    fun `a later clock head is the next train and reopens the ladder`() {
         val gate = NavigationEventSpeechGate()
         assertTrue(
             gate.acceptNaverSubwayWalkBrief(
                 subway("9분", clocks = listOf("10:01", "10:07", "10:14")),
             ),
         )
-        assertFalse(
+        assertTrue(
             gate.accept(subway("6분", clocks = listOf("10:07", "10:14", "10:27"))),
         )
     }
@@ -68,7 +119,7 @@ class NaverSubwayNextTrainTest {
             ),
         )
         assertTrue(gate.accept(soon()))
-        assertFalse(
+        assertTrue(
             gate.accept(subway("6분", clocks = listOf("10:07", "10:14", "10:27"))),
         )
     }

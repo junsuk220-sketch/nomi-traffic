@@ -139,6 +139,94 @@ class NaverBusWaitTrackerTest {
     }
 
     @Test
+    fun `subway alight transfer opens first following bus board`() {
+        val tracker = NaverBusWaitTracker()
+        val t0 = 1_000_000L
+        tracker.closeForSubwayTrip()
+        tracker.noteSubwayTransfer(t0)
+
+        assertTrue(tracker.openFromSubwayTransfer(listOf("81"), t0 + 62_000L))
+        assertFalse(tracker.isClosedForSubwayTrip())
+        val bus = tracker.onNotification(
+            listOf(bus("81", "1분"), bus("81", "9분")),
+            stop = "백마역",
+            nowMs = t0 + 62_000L,
+        )!!
+        assertEquals("81", bus.target!!.line)
+        assertEquals(1, bus.speakStage)
+    }
+
+    @Test
+    fun `bus trip re-seeds the transfer bus after a subway alight`() {
+        val tracker = NaverBusWaitTracker()
+        val t0 = 1_000_000L
+        tracker.pinBusLine("1500")
+        tracker.onNotification(listOf(bus("1500", "5분")), stop = "일산동부경찰서(중)", nowMs = t0)
+        tracker.noteSubwayTransfer(t0 + 40 * 60_000L)
+
+        assertTrue(
+            tracker.openFromSubwayTransfer(listOf("3100"), t0 + 42 * 60_000L),
+        )
+        val next = tracker.onNotification(
+            listOf(bus("3100", "3분"), bus("3100", "34분")),
+            stop = "신논현역.(구)교보타워사거리",
+            nowMs = t0 + 42 * 60_000L,
+        )!!
+        assertEquals("3100", next.target!!.line)
+    }
+
+    @Test
+    fun `subway trip stays closed without a recent transfer cue`() {
+        val tracker = NaverBusWaitTracker()
+        val t0 = 1_000_000L
+        tracker.closeForSubwayTrip()
+        assertFalse(tracker.openFromSubwayTransfer(listOf("81"), t0))
+        tracker.noteSubwayTransfer(t0)
+        assertFalse(tracker.openFromSubwayTransfer(listOf("81"), t0 + 5 * 60_000L + 1L))
+        assertTrue(tracker.isClosedForSubwayTrip())
+    }
+
+    @Test
+    fun `after bus alight the transfer bus board re-seeds the wait`() {
+        // 2026-10-01 23:12: 240 → 하차 후 환승 → `신사역까지 걷기|M7412 (8분), M7412 (20분)`.
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("240")
+        tracker.onNotification(listOf(bus("240", "5분")), stop = "삼성역")
+        tracker.noteBusAlighted()
+        val next = tracker.onNotification(
+            listOf(bus("M7412", "8분"), bus("M7412", "20분")),
+            stop = "신사역",
+        )!!
+        assertEquals("M7412", next.target!!.line)
+        assertEquals(10, next.speakStage)
+        assertEquals(setOf("M7412"), tracker.pinnedBusLines())
+        assertEquals("신사역", tracker.lockedBoardStop())
+    }
+
+    @Test
+    fun `without bus alight another board keeps the pin`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("240")
+        tracker.onNotification(listOf(bus("240", "5분")), stop = "삼성역")
+        assertNull(
+            tracker.onNotification(listOf(bus("M7412", "8분")), stop = "신사역"),
+        )
+        assertEquals(setOf("240"), tracker.pinnedBusLines())
+    }
+
+    @Test
+    fun `bus alight latch is used once`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("240")
+        tracker.noteBusAlighted()
+        tracker.onNotification(listOf(bus("240", "5분")), stop = "삼성역")
+        assertNull(
+            tracker.onNotification(listOf(bus("M7412", "8분")), stop = "신사역"),
+        )
+        assertEquals(setOf("240"), tracker.pinnedBusLines())
+    }
+
+    @Test
     fun `leave clears seed`() {
         val tracker = NaverBusWaitTracker()
         tracker.pinBusLine("81")
@@ -201,6 +289,47 @@ class NaverBusWaitTrackerTest {
         assertTrue(next.switched)
         assertEquals("81", next.target!!.line)
         assertEquals(10, next.speakStage)
+    }
+
+    @Test
+    fun `after riding sheet wait board stays silent`() {
+        // 2026-10-16 15:29 Riding → 15:37 sheet "안내중인 경로 바로가기" showed 98:2분.
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("98")
+        assertEquals(1, tracker.onNotification(listOf(bus("98", "곧 도착")), stop = "경기신용보증재단")!!.speakStage)
+        tracker.noteRiding()
+        assertTrue(tracker.isRiding())
+        val sheet = tracker.onSheet(listOf(bus("98", "2분"), bus("98", "12분")))
+        assertNull(sheet.speakStage)
+        assertFalse(sheet.switched)
+        assertEquals(setOf("98"), tracker.pinnedBusLines())
+    }
+
+    @Test
+    fun `after riding alight then wait board can speak again`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("98")
+        tracker.onNotification(listOf(bus("98", "곧 도착")), stop = "경기신용보증재단")
+        tracker.noteRiding()
+        tracker.noteBusAlighted()
+        assertFalse(tracker.isRiding())
+        val next = tracker.onNotification(
+            listOf(bus("1500", "10분")),
+            stop = "선릉역",
+        )!!
+        assertEquals("1500", next.target!!.line)
+        assertEquals(10, next.speakStage)
+    }
+
+    @Test
+    fun `leave clears riding so sheet can speak on a new trip`() {
+        val tracker = NaverBusWaitTracker()
+        tracker.pinBusLine("98")
+        tracker.noteRiding()
+        tracker.leave()
+        assertFalse(tracker.isRiding())
+        tracker.pinBusLine("98")
+        assertEquals(10, tracker.onSheet(listOf(bus("98", "10분")))!!.speakStage)
     }
 
     private fun bus(

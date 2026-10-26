@@ -1,5 +1,6 @@
 package nomi.android.traffic.eventfirst
 
+import nomi.android.traffic.FieldLogs
 import java.io.File
 
 /**
@@ -18,6 +19,7 @@ internal object EventFirstLog {
     private val lock = Any()
 
     fun attach(filesDir: File) {
+        if (!FieldLogs.enabled) return
         synchronized(lock) { dir = filesDir }
     }
 

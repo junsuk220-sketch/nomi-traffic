@@ -47,6 +47,68 @@ class NaverTripStartParserTest {
         )
     }
 
+    private fun nodes(vararg texts: String) = NaverSubwayAccessibilityParser.Node(
+        children = texts.map { NaverSubwayAccessibilityParser.Node(text = it) },
+    )
+
+    private fun at1754(): Long = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 17)
+        set(Calendar.MINUTE, 54)
+        set(Calendar.SECOND, 8)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    /** 2026-10-01 17:56:32: options list while a route is running. */
+    @Test
+    fun `live route options list is not a briefing`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = nodes(
+                "안내중인 경로 바로가기", "어구어구 건대본점", "오늘 17:53 출발", "안내 중",
+                "1시간 19분", "도보 2분, 3호선 47분, 도보 3분, 2호선 16분, 도보 9분",
+                "2분", "47분", "16분", "9분", "3호선", "정발산역", "오금행", "마두역 방면",
+                "2호선", "을지로3가역", "하차", "건대입구역", "안내 종료",
+                "1시간 38분", "도보 5분, M7412번 광역 버스 62분, 도보 7분, 7호선 10분, 도보 9분",
+                "바로 안내시작",
+            ),
+            timestampMillis = at1754(),
+            requireLive = true,
+        )
+        assertEquals(NaverTripStartParser.Decision.Pending, decision)
+    }
+
+    @Test
+    fun `route options list is not a preview`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = nodes(
+                "도보 2분, 3호선 47분, 도보 3분, 2호선 16분, 도보 9분",
+                "2분", "47분", "3호선", "정발산역", "오금행", "바로 안내시작",
+            ),
+            timestampMillis = at1754(),
+            requireLive = false,
+        )
+        assertEquals(NaverTripStartParser.Decision.Pending, decision)
+    }
+
+    /** 2026-10-01 17:54:08: "오후 7:28 도착" is the route's arrival, not a train. */
+    @Test
+    fun `route arrival clock is not the next train`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = nodes(
+                "1시간 34분", "도보 1분, 81번 일반 버스 1분, 1500번 직행좌석 버스 38분, 도보 6분, 2호선 36분, 도보 9분",
+                "2호선", "오후 5:53 기준 (출발 대기 1분)", "도보 83m", "1분",
+                "1시간 34분", "오후 7:28 도착", "미리보기", "안내시작",
+            ),
+            timestampMillis = at1754(),
+            requireLive = false,
+        )
+        val line = (decision as? NaverTripStartParser.Decision.Speak)
+            ?.let { NavigationEventSpeech.line(it.event) }.orEmpty()
+        assertFalse(line, line.contains("94분"))
+    }
+
     @Test
     fun `live start splits walk meters and minutes plus board line and clock`() {
         val now = System.currentTimeMillis()
@@ -565,10 +627,9 @@ class NaverTripStartParserTest {
             }.timeInMillis,
             requireLive = true,
         )
-        val event = (decision as NaverTripStartParser.Decision.Speak).event
-        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
-        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
-        assertTrue(event.busInfo!!.arrivals.none { it.line == "99" })
+        // A route options list waits for the live sheet; it never pins the alternative 99.
+        val event = (decision as? NaverTripStartParser.Decision.Speak)?.event
+        assertTrue(event == null || event.busInfo!!.arrivals.none { it.line == "99" })
     }
 
     @Test
@@ -589,6 +650,84 @@ class NaverTripStartParserTest {
         assertEquals(NaverMapsTransit.TRIP_START_ACTION, event.action)
         assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
         assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+    }
+
+    @Test
+    fun `no-eta board above 안내 중 still briefs that bus`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = texts(
+                "경기 고양시 일산동구 장항동 1474",
+                "도보 564m",
+                "8분",
+                "롯데백화점 승차",
+                "20214",
+                "50",
+                "도착 예정 정보 없음",
+                "과거 시간표",
+                "버스 도착정보 더보기",
+                "7개 정류장 이동",
+                "16분",
+                "세원고교입구.동국대병원사거리 하차",
+                "20507",
+                "도보 124m",
+                "1분",
+                "95번 환승1회 1시간 6분",
+                "안내 중",
+                "3800번 1시간 8분",
+                "1시간 11분",
+                "오후 5:51 도착",
+                "길안내를 시작합니다.",
+            ),
+            requireLive = true,
+        )
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_BUS, event.rawText)
+        assertEquals("50", event.busInfo!!.arrivals.single().line)
+        assertEquals("", event.busInfo!!.arrivals.single().eta)
+        assertEquals(
+            "50번 버스 도착 예정 정보가 없습니다.",
+            NavigationEventSpeech.line(event),
+        )
+    }
+
+    @Test
+    fun `board above 안내 중 does not replace a vehicle below it`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = texts(
+                "도보 564m",
+                "8분",
+                "롯데백화점 승차",
+                "50",
+                "도착 예정 정보 없음",
+                "안내 중",
+                "도보 약 11분",
+                "3호선",
+                "오금행",
+            ),
+            requireLive = true,
+        )
+        val event = (decision as NaverTripStartParser.Decision.Speak).event
+        assertEquals(NaverMapsTransit.KIND_SUBWAY, event.rawText)
+        assertEquals("3호선", event.busInfo!!.arrivals[0].line)
+    }
+
+    @Test
+    fun `bare bus above 안내 중 without a boarding stop stays pending`() {
+        val decision = NaverTripStartParser.decision(
+            packageName = NaverMapNotification.PACKAGE,
+            root = texts(
+                "99",
+                "2분",
+                "7정류장",
+                "여유",
+                "안내 중",
+                "3800번 1시간 8분",
+            ),
+            requireLive = true,
+        )
+        assertEquals(NaverTripStartParser.Decision.Pending, decision)
     }
 
     @Test
@@ -640,6 +779,11 @@ class NaverTripStartParserTest {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis,
     )
+
+    private fun texts(vararg blobs: String): NaverSubwayAccessibilityParser.Node =
+        NaverSubwayAccessibilityParser.Node(
+            children = blobs.map { NaverSubwayAccessibilityParser.Node(text = it) },
+        )
 
     private fun node(vararg texts: String): NaverSubwayAccessibilityParser.Node {
         val blobs = texts.toList().let { list ->

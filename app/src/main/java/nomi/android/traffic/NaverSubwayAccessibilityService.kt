@@ -9,14 +9,25 @@ import nomi.android.traffic.eventfirst.EventFirstEngine
 import nomi.android.traffic.eventfirst.NaverA11yGuidanceEnd
 import nomi.android.traffic.api.briefing.StartBriefingShadow
 import nomi.android.traffic.api.briefing.StartBriefingShadowDebug
+import nomi.android.traffic.api.transfer.TransferShadow
+import nomi.android.traffic.api.transfer.TransferShadowDebug
 import nomi.android.traffic.api.eta.EtaShadow
+import nomi.android.traffic.api.nextbus.NextBusNoInfoDebug
+import nomi.android.traffic.api.nexttrain.NextTrainDebug
+import nomi.android.traffic.api.nextbus.NextBusNoInfoShadow
+import nomi.android.traffic.api.routelegs.RouteLegs
+import nomi.android.traffic.api.routelegs.RouteLegsDebug
 import nomi.android.traffic.observe.TransitObservation
 import nomi.android.traffic.observe.TransitObservationDebug
+import nomi.android.traffic.observe.TransitReading
 import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.scope.CurrentGuidanceScopeDebug
+import nomi.android.traffic.setupnudge.SetupNudgeShadow
 import nomi.android.traffic.speech.SpeechLedger
 import nomi.android.traffic.track.VehicleTracking
 import nomi.android.traffic.track.VehicleTrackingDebug
+import nomi.traffic.A11yDoneNotice
+import nomi.traffic.A11yItem
 
 /**
  * Reads the current Naver Maps screen for subway 빠른 하차 / 빠른 환승,
@@ -32,11 +43,15 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
     private var transferWalkReadyAtMs = 0L
     private var transferWalkSpokenThisLive = false
     private var boardDirectionSpokenThisLive = false
+    private var awaitBoardDirection = false
+    private var boardDirectionReadyAtMs = 0L
+    private var pendingBoardDirection: nomi.product.nav.NavigationEvent? = null
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkg = event.packageName?.toString() ?: return
         if (pkg != NaverMapNotification.PACKAGE) return
+        NavigationEventVoice.tickStartBrief()
         val interactive = getSystemService(PowerManager::class.java)?.isInteractive != false
         NaverRideObservationLog.recordA11yEvent(
             ts = System.currentTimeMillis(),
@@ -58,7 +73,11 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 texts.contains("안내시작") ||
                 desc.contains("안내시작")
             NaverTripStartDiag.logClick(diagSeq, event, texts, desc, startClick)
+            if (startClick || NaverTripStartParser.isEndButton(texts) || NaverTripStartParser.isEndButton(desc)) {
+                NaverGuidanceRemoved.flush()
+            }
             if (startClick) {
+                NaverTripStartDebug.note("click_arm text=[${texts.take(120)}] desc=[${desc.take(120)}]")
                 val armed = NaverTripStartSession.restartFromClick(System.currentTimeMillis())
                 NavigationEventVoice.resetNaverTripStart()
                 NaverTripStartDiag.onSessionClockReset()
@@ -94,11 +113,20 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             val tree = collect(root)
             val now = System.currentTimeMillis()
             val live = NaverTransitDestinationParser.isLiveGuidance(tree)
-            val windowId = root.windowId.toLong()
-            val hasStartButton = flattenBlobs(tree).any { NaverTripStartParser.isStartButton(it) }
+            val screenBlobs = flattenBlobs(tree)
+            try {
+                CurrentGuidanceScope.onScreen(screenBlobs)
+            } catch (_: Throwable) {
+            }
+            if (LeftoverSubway.dropPinIfBusScope()) {
+                Log.i(NaverMapNotification.TAG, "[NAVER_PIN] leftover subway dropped, scope=BUS")
+            }
+            val hasStartButton = screenBlobs.any { NaverTripStartParser.isStartButton(it) }
             NaverTripStartDiag.logTree(diagSeq, event, now, root, live, hasStartButton)
             if (root.packageName?.toString() != NaverMapNotification.PACKAGE) return
             if (!live) {
+                // Back on the options list: the detail looked at before is not the chosen route.
+                if (NaverTripStartParser.isRouteList(screenBlobs)) NaverTripStartCache.clear()
                 when (
                     val preview = NaverTripStartParser.decision(
                         packageName = pkg,
@@ -116,20 +144,14 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 if (NaverTripStartDiag.consumeNotLiveBegin()) {
                     NaverTripStartDiag.logNotLiveBegin(diagSeq, event, now, root, live)
                 }
-                if (NaverTripStartSession.noteNotLive(now, windowId)) {
-                    NaverTripStartDiag.logSessionEndTrigger(diagSeq, event, now, root, live)
-                    NavigationEventVoice.onNaverGuidanceEnded()
-                    Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] session ended")
-                }
             } else {
                 NaverTripStartDiag.onLiveSeen()
-                NaverTripStartSession.noteLiveWindow(windowId)
             }
             if (live != wasLive) {
                 NaverTripStartDiag.logLiveState(diagSeq, wasLive, live, event, now, root, live)
             }
             if (live && !wasLive) {
-                if (NaverTripStartSession.noteLive(now, windowId)) {
+                if (NaverTripStartSession.noteLive(now)) {
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance armed")
                     NaverTripStartDebug.step1(
                         how = "live_edge",
@@ -141,8 +163,7 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     NavigationEventVoice.onNaverGuidanceStarted()
                     NavigationEventVoice.pinNaverFromTripCache()
                 } else {
-                    // 안내 중 vanished for a few frames inside the same guidance.
-                    // A flicker is not a new trip — keep the subway cues already spoken.
+                    // 안내 중 came back inside the same guidance. Not a new trip.
                     Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] live guidance began")
                     NaverTripStartDebug.note(
                         "STEP1 live_edge_skip ${NaverTripStartSession.debugSnapshot(now)}",
@@ -154,9 +175,35 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 NavigationEventVoice.onNaverGuidanceOffScreen()
             }
             wasLive = live
+            try {
+                if (live) SetupNudgeShadow.onLiveScreen(this)
+            } catch (_: Throwable) {
+            }
+            if (live) {
+                NaverFirstLeg.read(screenBlobs)?.let { leg ->
+                    if (NaverTripStartSession.noteFirstLeg(leg, now)) {
+                        Log.i(NaverMapsTransit.TAG, "[NAVER_TRIP] first leg ${leg.label()}")
+                    }
+                }
+            }
 
+            if (NaverTripStartSession.dropUnconfirmed(now)) {
+                NaverTripStartCache.clear()
+                NaverTripStartDebug.note("click_unconfirmed_dropped")
+            }
             if (NaverTripStartSession.due(now)) {
-                val liveDecision = NaverTripStartParser.decision(
+                val legBlock = NaverTripStartSession.firstLeg()?.block.orEmpty()
+                val fromLeg = if (legBlock.isEmpty()) {
+                    null
+                } else {
+                    NaverTripStartParser.decision(
+                        packageName = pkg,
+                        root = NaverFirstLeg.node(legBlock),
+                        timestampMillis = now,
+                        requireLive = true,
+                    ) as? NaverTripStartParser.Decision.Speak
+                }
+                val liveDecision = fromLeg ?: NaverTripStartParser.decision(
                     packageName = pkg,
                     root = tree,
                     timestampMillis = now,
@@ -172,7 +219,16 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     is NaverTripStartParser.Decision.Speak -> "Speak"
                     NaverTripStartParser.Decision.Pending -> "Pending"
                 }
-                if (tripEvent != null) {
+                val tripLine = tripEvent?.let { NavigationEventSpeech.line(it) }
+                if (tripEvent != null &&
+                    !NaverFirstLeg.allows(tripLine, NaverTripStartSession.firstLeg())
+                ) {
+                    Log.i(
+                        NaverMapsTransit.TAG,
+                        "[NAVER_TRIP] screen briefing not first leg " +
+                            "line=${tripLine.orEmpty()} leg=${NaverTripStartSession.firstLeg()?.label()}",
+                    )
+                } else if (tripEvent != null) {
                     NaverTripStartDebug.step3(
                         due = true,
                         decision = decisionLabel,
@@ -213,13 +269,10 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 }
             }
 
-            val screenBlobs = flattenBlobs(tree)
-            try {
-                CurrentGuidanceScope.onScreen(screenBlobs)
-            } catch (_: Throwable) {
-            }
+            var transferReading: TransitReading? = null
             try {
                 val reading = TransitObservation.fromScreen(pkg, tree, now)
+                transferReading = reading
                 TransitObservationDebug.emit(reading)
                 val scope = CurrentGuidanceScope.snapshot()
                 val vehicle = VehicleTracking.observe(scope, reading)
@@ -229,7 +282,33 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     NavigationEventVoice.speechLedger() ?: SpeechLedger(),
                     now,
                 )
-                StartBriefingShadow.tick(scope, reading)
+            } catch (_: Throwable) {
+            }
+            try {
+                TransferShadow.tick(screenBlobs, transferReading, liveScreen = live)
+            } catch (_: Throwable) {
+            }
+            try {
+                val scope = CurrentGuidanceScope.snapshot()
+                StartBriefingShadow.tick(scope, transferReading)
+            } catch (_: Throwable) {
+            }
+            try {
+                NextBusNoInfoShadow.tickScreen(screenBlobs, now)
+            } catch (_: Throwable) {
+            }
+            try {
+                RouteLegs.observe(screenBlobs, live, now)
+            } catch (_: Throwable) {
+            }
+            // The trip-start hold below returns before the rest of this event.
+            // Save the route just read, or the card keeps the previous note.
+            try {
+                RouteCardAccess.naverIntake(this).onScreen(
+                    destinationLabel = NaverTransitDestinationParser.destination(tree),
+                    liveGuidance = live,
+                    atMillis = now,
+                )
             } catch (_: Throwable) {
             }
             NaverRideObservationLog.recordA11yTree(
@@ -240,6 +319,8 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             )
             if (NaverA11yGuidanceEnd.read(screenBlobs)) {
                 EventFirstEngine.onGuidanceEnd(now)
+                NaverTripStartSession.reset()
+                NavigationEventVoice.onNaverGuidanceEnded()
             }
             screenBlobs.forEach {
                 NavigationEventVoice.noteNaverNearBoard(it)
@@ -282,13 +363,25 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                 root = tree,
                 timestampMillis = now,
             )
-            if (boardDirection != null && !boardDirectionSpokenThisLive) {
+            if (boardDirection != null && !boardDirectionSpokenThisLive && !awaitBoardDirection) {
+                awaitBoardDirection = true
+                boardDirectionReadyAtMs = now + AFTER_NAVER_ALIGHT_MS
+                pendingBoardDirection = boardDirection
+                Log.i(NaverMapsTransit.TAG, "[NAVER_TRANSFER] board direction armed")
+            }
+            if (awaitBoardDirection &&
+                now >= boardDirectionReadyAtMs &&
+                pendingBoardDirection != null &&
+                !boardDirectionSpokenThisLive
+            ) {
                 Log.i(
                     NaverMapsTransit.TAG,
-                    NaverTransferAccessibilityParser.formatLog(boardDirection),
+                    NaverTransferAccessibilityParser.formatLog(pendingBoardDirection!!),
                 )
-                NavigationEventVoice.offer(this, boardDirection)
+                NavigationEventVoice.offer(this, pendingBoardDirection!!)
                 boardDirectionSpokenThisLive = true
+                awaitBoardDirection = false
+                pendingBoardDirection = null
             }
 
             val parsed = NaverSubwayAccessibilityParser.parse(
@@ -298,6 +391,18 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
             )
             for (item in parsed) {
                 if (!dedup.accept(item)) continue
+                val afterNaver =
+                    item.action == NaverMapsTransit.QUICK_TRANSFER ||
+                        item.action == NaverMapsTransit.QUICK_EXIT
+                if (afterNaver) {
+                    if (!boardDirectionSpokenThisLive && !awaitBoardDirection) {
+                        awaitBoardDirection = true
+                        boardDirectionReadyAtMs = now + AFTER_NAVER_ALIGHT_MS
+                        pendingBoardDirection = item
+                        Log.i(NaverMapsTransit.TAG, "[NAVER_TRANSFER] board car cue armed")
+                    }
+                    continue
+                }
                 Log.i(NaverMapsTransit.TAG, NaverSubwayAccessibilityParser.formatLog(item))
                 NavigationEventVoice.offer(this, item)
             }
@@ -320,11 +425,6 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
                     NavigationEventVoice.offer(this, item)
                 }
             }
-            RouteCardAccess.naverIntake(this).onScreen(
-                destinationLabel = NaverTransitDestinationParser.destination(tree),
-                liveGuidance = live,
-                atMillis = now,
-            )
         } finally {
             root.recycle()
         }
@@ -335,11 +435,15 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         transferWalkReadyAtMs = 0L
         transferWalkSpokenThisLive = false
         boardDirectionSpokenThisLive = false
+        awaitBoardDirection = false
+        boardDirectionReadyAtMs = 0L
+        pendingBoardDirection = null
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         NaverRideObservationLog.attach(filesDir)
+        NaverTripStartDebug.attach(filesDir)
         NavigationEventVoice.prepare(this)
         Log.i(NaverMapsTransit.TAG, "service connected")
         NaverTripStartDebug.note("service_connected ${NaverTripStartDebug.buildMark()}")
@@ -347,6 +451,18 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
         TransitObservationDebug.emit("feed_attached a11y")
         VehicleTrackingDebug.emit("feed_attached a11y")
         StartBriefingShadowDebug.emit("feed_attached a11y")
+        TransferShadowDebug.attach(filesDir)
+        TransferShadowDebug.emit("feed_attached a11y")
+        NextTrainDebug.attach(filesDir)
+        NextTrainDebug.emit("feed_attached a11y")
+        NextBusNoInfoDebug.attach(filesDir)
+        NextBusNoInfoDebug.emit("feed_attached a11y")
+        RouteLegsDebug.attach(filesDir)
+        RouteLegsDebug.emit("feed_attached a11y")
+        try {
+            A11yDoneNotice.showIfArmed(this, A11yItem.NAVER)
+        } catch (_: Throwable) {
+        }
     }
 
     override fun onInterrupt() = Unit
@@ -391,6 +507,6 @@ class NaverSubwayAccessibilityService : AccessibilityService() {
 
     companion object {
         /** Let Naver finish the alight cue before transfer walk. */
-        private const val AFTER_NAVER_ALIGHT_MS = 3_500L
+        private const val AFTER_NAVER_ALIGHT_MS = 5_000L
     }
 }

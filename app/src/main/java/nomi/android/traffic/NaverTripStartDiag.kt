@@ -195,27 +195,6 @@ internal object NaverTripStartDiag {
         }
     }
 
-    fun logSessionEndTrigger(
-        seq: Int,
-        event: AccessibilityEvent,
-        ts: Long,
-        root: AccessibilityNodeInfo,
-        live: Boolean,
-    ) {
-        safe {
-            line(
-                seq,
-                "SESSION_END_TRIGGER",
-                "timestamp=$ts",
-                "eventType=${typeName(event.eventType)}",
-                "rootClass=${root.className}",
-                "rootPackage=${root.packageName}",
-                "rootWindowId=${root.windowId}",
-                "live=$live",
-            )
-        }
-    }
-
     private fun line(seq: Int, event: String, vararg fields: String) {
         Log.i(TAG, buildString {
             append("[NAVER_DIAG] seq=").append(seq)

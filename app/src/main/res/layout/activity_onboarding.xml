@@ -59,39 +59,78 @@
             android:textColor="@color/muted"
             android:textSize="16sp" />
 
-            <include
-                android:id="@+id/onboardingA11yNames"
-                layout="@layout/include_a11y_names"
+            <ImageView
+                android:id="@+id/onboardingNotifyImage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="28dp"
+                android:adjustViewBounds="true"
+                android:background="@drawable/bg_onboarding_hint_focus"
+                android:clipToOutline="true"
+                android:contentDescription="@string/onboarding_notify_image_desc"
+                android:cropToPadding="true"
+                android:padding="14dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/onboarding_notify_switch"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/onboardingNotifyCaption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:text="@string/onboarding_notify_image_caption"
+                android:textColor="@color/amber"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/onboardingA11yStep1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="@string/onboarding_a11y_step1"
+                android:textColor="@color/ink"
+                android:textSize="18sp"
+                android:textStyle="bold"
                 android:visibility="gone" />
 
             <ImageView
                 android:id="@+id/onboardingHintImage"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="12dp"
                 android:adjustViewBounds="true"
-                android:background="@drawable/bg_onboarding_hint"
+                android:background="@drawable/bg_onboarding_hint_focus"
                 android:clipToOutline="true"
                 android:contentDescription="@string/onboarding_a11y_image_desc"
                 android:cropToPadding="true"
-                android:padding="10dp"
+                android:padding="14dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/onboarding_a11y_installed_apps"
                 android:visibility="gone" />
 
             <TextView
-                android:id="@+id/onboardingHintCaption"
+                android:id="@+id/onboardingA11yStep2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:gravity="center"
-                android:text="@string/onboarding_a11y_image_caption"
-                android:textColor="@color/ink_soft"
-                android:textSize="15sp"
+                android:layout_marginTop="26dp"
+                android:text="@string/onboarding_a11y_step2"
+                android:textColor="@color/ink"
+                android:textSize="18sp"
+                android:textStyle="bold"
                 android:visibility="gone" />
+
+            <include
+                android:id="@+id/onboardingA11yNames"
+                layout="@layout/include_a11y_names"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:visibility="gone" />
+
         </LinearLayout>
     </ScrollView>
 
@@ -103,4 +142,15 @@
         android:text="@string/onboarding_allow"
         android:textSize="17sp"
         android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/onboardingConfirm"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginBottom="24dp"
+        android:text="@string/onboarding_map_notify_done"
+        android:textColor="@color/ink"
+        android:textSize="16sp"
+        android:visibility="gone" />
 </LinearLayout>

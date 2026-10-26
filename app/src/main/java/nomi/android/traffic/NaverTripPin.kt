@@ -1,5 +1,6 @@
 package nomi.android.traffic
 
+import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.product.nav.NavigationEvent
 
 /**
@@ -14,6 +15,15 @@ internal object NaverTripPin {
         val line = event.busInfo?.arrivals?.firstOrNull()?.line?.trim().orEmpty()
         if (line.isEmpty()) return null
         if (event.rawText == NaverMapsTransit.KIND_SUBWAY) {
+            if (LeftoverSubway.againstBusScope(event.rawText)) {
+                LeftoverSubway.dropPinIfBusScope()
+                val busLine = CurrentGuidanceScope.snapshot().line?.trim().orEmpty()
+                if (busLine.isNotEmpty()) {
+                    busWait.pinBusLine(busLine)
+                    return "leftover_subway_skip bus seed=$busLine"
+                }
+                return null
+            }
             NaverSubwayPin.pin(line)
             busWait.closeForSubwayTrip()
             return "subway=$line"

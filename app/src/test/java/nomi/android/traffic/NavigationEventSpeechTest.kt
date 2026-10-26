@@ -333,7 +333,7 @@ class NavigationEventSpeechTest {
                 ),
             ),
         ).copy(rawText = NaverMapsTransit.KIND_SUBWAY)
-        val expected = "3호선이 3분 후 도착합니다. 다음 열차는 10분 후 도착입니다."
+        val expected = "3호선이 5분 후 도착합니다. 다음 열차는 10분 후 도착입니다."
         assertEquals(expected, NavigationEventSpeech.line(event))
         NaverNearBoardNotice.note("승차역 부근입니다.")
         assertEquals(expected, NavigationEventSpeech.line(event))
@@ -350,10 +350,22 @@ class NavigationEventSpeechTest {
         )
         val line = NavigationEventSpeech.line(event)!!
         assertEquals(
-            "3호선 오금행 열차가 9분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
             line,
         )
-        assertEquals(1, """9분""".toRegex().findAll(line.substringBefore("다음")).count())
+        assertEquals(1, """10분""".toRegex().findAll(line.substringBefore("다음")).count())
+    }
+
+    @Test
+    fun `four minutes with no five is spoken as the five rung`() {
+        val event = subwayWait(
+            raw = "3호선 4분 | 오금행 (15:44)",
+            arrivals = listOf(NavigationBusArrival("3호선", "4분")),
+        )
+        assertEquals(
+            "3호선 오금행 열차가 5분 후 도착합니다.",
+            NavigationEventSpeech.line(event),
+        )
     }
 
     @Test
@@ -410,7 +422,7 @@ class NavigationEventSpeechTest {
             arrivals = listOf(NavigationBusArrival("3호선", "9분")),
         )
         val line = NavigationEventSpeech.line(event)!!
-        assertEquals("3호선 오금행 열차가 9분 후 도착합니다.", line)
+        assertEquals("3호선 오금행 열차가 10분 후 도착합니다.", line)
         assertFalse(line.contains("다음 열차"))
     }
 
@@ -426,7 +438,7 @@ class NavigationEventSpeechTest {
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(ten))
         assertEquals(
-            "3호선 오금행 열차가 9분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 21분 후 도착입니다.",
             NavigationEventSpeech.line(ten),
         )
         val five = ten.copy(
@@ -476,7 +488,7 @@ class NavigationEventSpeechTest {
             ),
         )
         assertEquals(
-            "3호선 오금행 열차가 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다. 빠른 하차는 2-4번입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 15분 후 도착입니다. 빠른 하차는 2-4번입니다.",
             NavigationEventSpeech.line(event, includeFastAlight = true),
         )
     }
@@ -491,11 +503,11 @@ class NavigationEventSpeechTest {
             ),
         )
         assertEquals(
-            "3호선 오금행 열차가 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             NavigationEventSpeech.line(event, includeFastAlight = false),
         )
         assertEquals(
-            "3호선 오금행 열차가 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -521,11 +533,11 @@ class NavigationEventSpeechTest {
             arrivals = listOf(NavigationBusArrival("3호선", "8분")),
         )
         assertEquals(
-            "3호선이 8분 후 도착합니다. 빠른 하차는 2-4번입니다.",
+            "3호선이 10분 후 도착합니다. 빠른 하차는 2-4번입니다.",
             NavigationEventSpeech.line(event, includeFastAlight = true),
         )
         assertEquals(
-            "3호선이 8분 후 도착합니다.",
+            "3호선이 10분 후 도착합니다.",
             NavigationEventSpeech.line(event),
         )
     }
@@ -541,7 +553,7 @@ class NavigationEventSpeechTest {
         )
         val line = NavigationEventSpeech.line(event, includeFastAlight = true)!!
         assertEquals(
-            "3호선 오금행 열차가 8분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 15분 후 도착입니다.",
             line,
         )
         assertFalse(line.contains("빠른 하차"))

@@ -243,6 +243,129 @@ class CurrentGuidanceScopeTest {
     }
 
     @Test
+    fun `leftover start 302 after end does not reopen scope`() {
+        CurrentGuidanceScope.onScreen(listOf("안내 중", "88B", "5분", "4정류장"))
+        CurrentGuidanceScope.onScreen(listOf("길안내를 종료합니다."))
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "대화역 3호선까지 이동",
+        )
+        val leftover = CurrentGuidanceScope.snapshot()
+        assertFalse(leftover.active)
+        assertNull(leftover.line)
+        assertEquals(GuidanceKind.NONE, leftover.kind)
+        assertEquals(1, leftover.generation)
+    }
+
+    @Test
+    fun `live 안내 중 after leftover start 302 opens the new line`() {
+        CurrentGuidanceScope.onScreen(listOf("안내 중", "88B", "5분", "4정류장"))
+        CurrentGuidanceScope.onScreen(listOf("길안내를 종료합니다."))
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "대화역 3호선까지 이동",
+        )
+        CurrentGuidanceScope.onScreen(
+            listOf(
+                "999",
+                "9분",
+                "6정류장",
+                "여유",
+                "안내 중",
+            ),
+        )
+        val snap = CurrentGuidanceScope.snapshot()
+        assertTrue(snap.active)
+        assertEquals("999", snap.line)
+        assertEquals(GuidanceKind.BUS, snap.kind)
+        assertEquals(2, snap.generation)
+    }
+
+    @Test
+    fun `start phrase after leftover window opens the new trip`() {
+        var now = 1_000_000L
+        CurrentGuidanceScope.clockMs = { now }
+        CurrentGuidanceScope.onScreen(listOf("안내 중", "88B", "5분", "4정류장"))
+        CurrentGuidanceScope.onScreen(listOf("길안내를 종료합니다."))
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "대화역 3호선까지 이동",
+        )
+        assertFalse(CurrentGuidanceScope.snapshot().active)
+        now += CurrentGuidanceScope.LEFTOVER_START_MS
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "광닭발까지 이동",
+        )
+        val opened = CurrentGuidanceScope.snapshot()
+        assertTrue(opened.active)
+        assertNull(opened.line)
+        assertEquals(2, opened.generation)
+        CurrentGuidanceScope.onNotification(
+            title = "라페스타.먹자골목까지 걷기",
+            text = "81 (4분), 99 (5분)",
+        )
+        val mixed = CurrentGuidanceScope.snapshot()
+        assertNull(mixed.line)
+        assertEquals(GuidanceKind.NONE, mixed.kind)
+        assertEquals(2, mixed.generation)
+        CurrentGuidanceScope.onScreen(
+            listOf("99", "5분", "7정류장", "여유", "안내 중"),
+        )
+        val live = CurrentGuidanceScope.snapshot()
+        assertEquals("99", live.line)
+        assertEquals(GuidanceKind.BUS, live.kind)
+        assertEquals(2, live.generation)
+    }
+
+    @Test
+    fun `single wait 302 after start fills the line`() {
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "광닭발까지 이동",
+        )
+        CurrentGuidanceScope.onNotification(
+            title = "라페스타.먹자골목까지 걷기",
+            text = "999 (9분)",
+        )
+        val snap = CurrentGuidanceScope.snapshot()
+        assertEquals("999", snap.line)
+        assertEquals(GuidanceKind.BUS, snap.kind)
+        assertEquals(1, snap.generation)
+    }
+
+    @Test
+    fun `late start phrase while live keeps the line`() {
+        CurrentGuidanceScope.onScreen(
+            listOf("99", "12분", "12정류장", "여유", "안내 중"),
+        )
+        assertEquals("99", CurrentGuidanceScope.snapshot().line)
+        assertEquals(1, CurrentGuidanceScope.snapshot().generation)
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "광닭발까지 이동",
+        )
+        val kept = CurrentGuidanceScope.snapshot()
+        assertTrue(kept.active)
+        assertEquals("99", kept.line)
+        assertEquals(GuidanceKind.BUS, kept.kind)
+        assertEquals(1, kept.generation)
+        CurrentGuidanceScope.onNotification(
+            title = "길안내를 시작합니다.",
+            text = "광닭발까지 이동",
+        )
+        assertEquals(1, CurrentGuidanceScope.snapshot().generation)
+        assertEquals("99", CurrentGuidanceScope.snapshot().line)
+        CurrentGuidanceScope.onScreen(
+            listOf("99", "11분", "12정류장", "여유", "81", "16분", "12정류장", "여유", "안내 중"),
+        )
+        val live = CurrentGuidanceScope.snapshot()
+        assertEquals("99", live.line)
+        assertEquals(GuidanceKind.BUS, live.kind)
+        assertEquals(1, live.generation)
+    }
+
+    @Test
     fun `bus wait board without live or start phrase does not open scope`() {
         CurrentGuidanceScope.onNotification(
             title = "라페스타.먹자골목까지 걷기",

@@ -228,7 +228,11 @@ object GoogleTransitAccessibilityParser {
         val walkMinutes = itinerary?.groupValues?.get(1)?.toIntOrNull()
             ?: walkMinutes(blobs)
             ?: return null
-        val line = itinerary?.groupValues?.get(2)
+        // The route summary lists the transfer bus ("버스, 999") before the bus
+        // that is actually boarded. That bus is the number between 도보 and the
+        // first "에 출발".
+        val line = firstBoardingBus(blobs)
+            ?: itinerary?.groupValues?.get(2)
             ?: extractBusLine(blobs)
             ?: blobs.firstNotNullOfOrNull { bareBusLinePattern.matchEntire(it)?.groupValues?.get(1) }
             ?: return null
@@ -331,6 +335,18 @@ object GoogleTransitAccessibilityParser {
         TripStartDecision.Pending -> null
     }
 
+    /** Bus number of the first departure, not a later transfer bus in the summary. */
+    private fun firstBoardingBus(blobs: List<String>): String? {
+        val depart = blobs.indexOfFirst { isPrimaryDepartureClock(it) && it.contains("에 출발") }
+        if (depart < 0) return null
+        var index = depart - 1
+        while (index >= 0 && !blobs[index].contains("도보")) {
+            bareBusLinePattern.matchEntire(blobs[index].trim())?.groupValues?.get(1)?.let { return it }
+            index--
+        }
+        return null
+    }
+
     private fun firstTransitVehicle(blobs: List<String>): String? =
         blobs.firstNotNullOfOrNull { firstVehiclePattern.find(it)?.groupValues?.get(1) }
 
@@ -360,7 +376,9 @@ object GoogleTransitAccessibilityParser {
     /** Primary card clock like `오후 8:46`. Ignore schedule labels, ranges, and `기타:` alternatives. */
     private fun clockEtaMinutes(blobs: List<String>, nowMillis: Long): Int? {
         if (nowMillis <= 0L) return null
-        val blob = blobs.firstOrNull { isPrimaryDepartureClock(it) } ?: return null
+        val blob = blobs.firstOrNull { isPrimaryDepartureClock(it) && it.contains("에 출발") }
+            ?: blobs.firstOrNull { isPrimaryDepartureClock(it) }
+            ?: return null
         val match = clockPattern.find(blob) ?: return null
         val hour12 = match.groupValues[1].toIntOrNull() ?: return null
         val minute = match.groupValues[2].toIntOrNull() ?: return null

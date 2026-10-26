@@ -1,5 +1,6 @@
 package nomi.android.traffic.buswait
 
+import nomi.android.traffic.FieldLogs
 import nomi.product.nav.NavigationBusArrival
 import java.io.File
 
@@ -20,6 +21,7 @@ internal object BusWaitFieldTrace {
     private var lastWriteAtMs = 0L
 
     fun attach(filesDir: File) {
+        if (!FieldLogs.enabled) return
         synchronized(lock) { dir = filesDir }
     }
 

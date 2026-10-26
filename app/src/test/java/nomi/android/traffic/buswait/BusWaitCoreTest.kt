@@ -96,8 +96,8 @@ class BusWaitCoreTest {
     }
 
     @Test
-    fun `1분 then 2분 stays same vehicle`() {
-        assertTrue(
+    fun `1분 then a rising eta is the next bus of the same line`() {
+        assertFalse(
             BusWaitCore.isSameVehicle(
                 bus("81", "1분", stops = 1),
                 bus("81", "2분", stops = 2),
@@ -109,6 +109,18 @@ class BusWaitCoreTest {
                 bus("81", "10분", stops = 8),
             ),
         )
+    }
+
+    @Test
+    fun `next bus of the same line speaks its stages again`() {
+        val core = BusWaitCore()
+        core.seed("95")
+        assertEquals(5, core.observe(listOf(bus("95", "4분"), bus("95", "12분")), 0L)!!.speakStage)
+        assertEquals(2, core.observe(listOf(bus("95", "2분"), bus("95", "10분")), GAP)!!.speakStage)
+        assertEquals(1, core.observe(listOf(bus("95", "곧 도착"), bus("95", "10분")), GAP * 2)!!.speakStage)
+        val next = core.observe(listOf(bus("95", "7분")), GAP * 2 + CONFIRM)!!
+        assertTrue(next.switched)
+        assertEquals(10, next.speakStage)
     }
 
     @Test

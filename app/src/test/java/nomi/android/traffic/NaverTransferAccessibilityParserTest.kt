@@ -30,6 +30,27 @@ class NaverTransferAccessibilityParserTest {
         assertTrue(NavigationEventSpeechGate().accept(event))
     }
 
+    /** 2026-10-01 22:41: boarding 240, the sheet lists the later bus-to-bus walk. */
+    @Test
+    fun `bus stop named after an exit is not a subway exit walk`() {
+        assertNull(
+            NaverTransferAccessibilityParser.transferWalk(
+                packageName = NaverMapNotification.PACKAGE,
+                root = node(
+                    "안내 중",
+                    "건대입구역사거리.건대병원 승차",
+                    "버스 도착정보 더보기",
+                    "17개 정류장 이동",
+                    "31분",
+                    "신사역3번출구 하차",
+                    "23110",
+                    "도보 288m",
+                    "4분",
+                ),
+            ),
+        )
+    }
+
     @Test
     fun `transfer walk stays silent while still far without door hint`() {
         assertNull(

@@ -35,7 +35,7 @@ class RouteCardAdapter(
         val ctx = holder.itemView.context
         holder.destination.text = item.destinationName
         holder.provider.text = RouteCardCopy.providerLabel(item.provider)
-        holder.detail.text = RouteCardCopy.modeLabel(item.mode)
+        holder.detail.text = RouteCardCopy.modeOrTransferLabel(item)
         holder.whenUsed.text = RouteCardCopy.lastUsedLabel(item.lastUsedAtMillis, nowMillis)
         when (item.provider) {
             NavigationEventSource.NAVER -> {

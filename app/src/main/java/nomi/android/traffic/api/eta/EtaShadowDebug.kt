@@ -9,7 +9,7 @@ import nomi.android.traffic.track.VehicleSnapshot
  */
 internal object EtaShadowDebug {
     const val TAG = "ETA_SHADOW"
-    private const val BUILD = "vc93-eta-shadow"
+    private const val BUILD = "vc99-eta-voice"
 
     @Volatile
     private var lastKey: String? = null

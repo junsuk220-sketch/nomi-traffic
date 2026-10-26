@@ -8,12 +8,14 @@
     android:paddingVertical="14dp">
 
     <LinearLayout
+        android:id="@+id/a11yRowNaver"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
+            android:id="@+id/a11yNumNaver"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:gravity="center"
@@ -27,25 +29,28 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="@string/google_transit_a11y_label"
+            android:text="@string/naver_subway_a11y_label"
             android:textColor="@color/ink"
             android:textSize="16sp"
             android:textStyle="bold" />
     </LinearLayout>
 
     <View
+        android:id="@+id/a11yRowDivider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginVertical="10dp"
         android:background="@color/stroke" />
 
     <LinearLayout
+        android:id="@+id/a11yRowGoogle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <TextView
+            android:id="@+id/a11yNumGoogle"
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:gravity="center"
@@ -59,7 +64,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="@string/naver_subway_a11y_label"
+            android:text="@string/google_transit_a11y_label"
             android:textColor="@color/ink"
             android:textSize="16sp"
             android:textStyle="bold" />

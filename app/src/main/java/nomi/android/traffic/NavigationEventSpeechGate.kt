@@ -25,11 +25,6 @@ class NavigationEventSpeechGate {
     private val spokenNaverBoardDirections = mutableSetOf<String>()
     private var spokenAlight = false
     private val spokenAlightStops = mutableSetOf<String>()
-    /**
-     * Naver just said 하차까지 1개 정류장/역 or 하차 후 환승, and the first
-     * subway ETA after that has not been spoken yet. One bit — not a Journey.
-     */
-    private var pendingTransferSubwayBrief = false
     /** Last subway 302 clock head, e.g. `10:01`. */
     private var lastSubwayClockHead: String? = null
     /** The tracked head has been seen as `(도착)`. Reset only after this. */
@@ -59,7 +54,6 @@ class NavigationEventSpeechGate {
         resetNaverSubwayStages()
         resetNaverSubwayClockTrack()
         resetNaverSubwayBoardBriefs()
-        resetTransferSubwayBrief()
         resetNaverTransferCues()
         resetNaverPrepareAlight()
     }
@@ -81,48 +75,6 @@ class NavigationEventSpeechGate {
         spokenNaverSubwayWalkBriefs.clear()
     }
 
-    fun isTransferSubwayBriefPending(): Boolean = pendingTransferSubwayBrief
-
-    /** The experiment owns this bit and nothing else clears it (제7원칙). */
-    fun resetTransferSubwayBrief() {
-        pendingTransferSubwayBrief = false
-    }
-
-    /**
-     * Arms on the last-stop 302 (`하차까지 1개 정류장` / `하차까지 1개 역`)
-     * or on 하차 후 환승, including the unparenthesized form captured on
-     * device. Plain 이번 정류장에서 하차 does not arm.
-     */
-    fun noteAlightThenTransfer(title: String?, action: String?): Boolean {
-        if (!shouldArmTransferSubwayBrief(title) && !shouldArmTransferSubwayBrief(action)) {
-            return false
-        }
-        pendingTransferSubwayBrief = true
-        return true
-    }
-
-    /**
-     * Experiment tier (부록 E): after alight-imminent or 하차 후 환승, the first
-     * trusted KIND_SUBWAY board is briefed with 빠른 하차 wording. The experiment
-     * owns [pendingTransferSubwayBrief] and nothing else — the board slot and the
-     * ladder are booked through their owner, [takeFirstSubwayBoardBrief].
-     */
-    fun acceptTransferSubwayBrief(event: NavigationEvent): Boolean {
-        noteNaverSubwayClocks(event)
-        if (!pendingTransferSubwayBrief) return false
-        if (event.source != NavigationEventSource.NAVER) return false
-        if (event.rawText != NaverMapsTransit.KIND_SUBWAY) return false
-        val first = event.busInfo?.arrivals?.firstOrNull() ?: return false
-        if (first.line.isBlank()) return false
-        pendingTransferSubwayBrief = false
-        if (!takeFirstSubwayBoardBrief(event)) {
-            // Slot was already taken, or this title names no board. The sentence
-            // still spoke an ETA, so the ladder must be told which rung that was.
-            etaMinutes(event)?.let { acceptNaverSubwayMinutes(it) }
-        }
-        return true
-    }
-
     /**
      * One walk-to-subway briefing per station+line. Not a 10/5/2/soon stage.
      * A later wait on the same board still uses the subway stage ladder.
@@ -133,9 +85,7 @@ class NavigationEventSpeechGate {
     }
 
     /**
-     * The single first-briefing slot for one station+line board. Two wordings
-     * compete for it, so booking the slot and telling the ladder which rung the
-     * sentence covered happen here and nowhere else (제19원칙).
+     * The single first-briefing slot for one station+line board.
      */
     private fun takeFirstSubwayBoardBrief(event: NavigationEvent): Boolean {
         val key = naverSubwayWalkBriefKey(event) ?: return false
@@ -322,8 +272,9 @@ class NavigationEventSpeechGate {
     }
 
     /**
-     * Subway next-train: reset the ladder only after `(도착)` and a later clock head.
-     * Relative countdown and a clock slide without arrived do not reset.
+     * Subway next-train: a later clock head is the next train. After `(도착)`, the
+     * first clock head or a relative `2분` or more is the next train too.
+     * A clock slide or `곧` right after `(도착)` is the same train and does not reset.
      */
     private fun noteNaverSubwayClocks(event: NavigationEvent) {
         if (event.source != NavigationEventSource.NAVER) return
@@ -334,14 +285,29 @@ class NavigationEventSpeechGate {
             lastSubwayNextClock = null
             lastSubwayNextLine = null
         }
-        val head = info.clocks.firstOrNull() ?: return
+        if (isArrivedOnly(event)) return
+        val head = info.clocks.firstOrNull()
+        if (head == null) {
+            val minutes = TransitSoonEta.minutes(info.arrivals.firstOrNull()?.eta.orEmpty())
+            if (subwayClockDeparted && minutes != null && minutes >= 2) {
+                resetNaverSubwayStages()
+                subwayClockDeparted = false
+            }
+            return
+        }
         val previous = lastSubwayClockHead
         if (previous == null) {
             lastSubwayClockHead = head
+            if (subwayClockDeparted) {
+                resetNaverSubwayStages()
+                subwayClockDeparted = false
+            }
             if (!info.arrived) rememberSubwayNext(info)
             return
         }
-        if (subwayClockDeparted && isClockLater(head, previous)) {
+        if (isClockLater(head, previous)) {
+            // A later head clock is the next train, whether or not the
+            // previous one was seen as (도착). Stages start over for it.
             resetNaverSubwayStages()
             lastSubwayClockHead = head
             subwayClockDeparted = false
@@ -351,6 +317,13 @@ class NavigationEventSpeechGate {
         if (!subwayClockDeparted) {
             rememberSubwayNext(info)
         }
+    }
+
+    /** `(도착)` with no other train: the train at the platform, not a wait rung. */
+    fun isArrivedOnly(event: NavigationEvent): Boolean {
+        val info = event.busInfo ?: return false
+        if (!info.arrived) return false
+        return info.arrivals.isNotEmpty() && info.arrivals.all { it.eta.trim() == "도착" }
     }
 
     private fun rememberSubwayNext(info: NavigationBusInfo) {
@@ -421,24 +394,5 @@ class NavigationEventSpeechGate {
     companion object {
         private val ETA_MINUTES = Regex("""(\d+)\s*분""")
         private val PASSAGE = Regex("""(\d+)\s*통해\s*(들어가기|나가기)""")
-        private val ALIGHT_THEN_TRANSFER =
-            Regex("""^이번 (역|정류장)(?:\([^)]+\))?에서 하차 후 환승(?:하세요)?\.?$""")
-        private val ALIGHT_IMMINENT =
-            Regex("""^하차까지 1개 (정류장|역)$""")
-
-        internal fun shouldArmTransferSubwayBrief(raw: String?): Boolean =
-            isAlightThenTransfer(raw) || isAlightImminent(raw)
-
-        internal fun isAlightThenTransfer(raw: String?): Boolean {
-            val head = raw?.trim().orEmpty()
-            if (head.isEmpty()) return false
-            return ALIGHT_THEN_TRANSFER.matches(head)
-        }
-
-        internal fun isAlightImminent(raw: String?): Boolean {
-            val head = raw?.trim().orEmpty()
-            if (head.isEmpty()) return false
-            return ALIGHT_IMMINENT.matches(head)
-        }
     }
 }

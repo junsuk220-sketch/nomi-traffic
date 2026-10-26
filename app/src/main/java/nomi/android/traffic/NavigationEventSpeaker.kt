@@ -1,9 +1,15 @@
 package nomi.android.traffic
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import nomi.android.traffic.api.transfer.Transfer
+import nomi.android.traffic.scope.CurrentGuidanceScope
 import nomi.android.traffic.speech.SpeechLedger
+import nomi.android.traffic.speech.SpeechMouth
 import nomi.android.traffic.speech.SpeechSink
+import nomi.android.traffic.api.seoulcountdown.SeoulSubwayCountdownShadow
 import nomi.product.nav.NavigationEvent
 import nomi.product.nav.NavigationEventSource
 import nomi.product.nav.NavigationEventType
@@ -39,6 +45,63 @@ class NavigationEventSpeaker(
         speak(line)
     }
 
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private val startBrief = PendingStartBrief()
+
+    /**
+     * The trip-start briefing, said twice, [NaverTripStartSession.BRIEF_AFTER_NAVER_MS]
+     * after Naver's own start line. Marked spoken now so the other path stays quiet.
+     * The timer and the next Naver event after the due time both fire it; first one wins.
+     */
+    fun briefStart(text: String, bus: Boolean) {
+        val line = text.trim()
+        if (line.isEmpty()) return
+        if (!firstLegAllows(line, "brief")) return
+        val now = System.currentTimeMillis()
+        NaverTripStartSession.markSpoken(now)
+        val key = briefRouteKey(line)
+        if (NaverTripStartSession.isLateClickRepeat(key)) {
+            Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] briefing skip late_click_same_route=$key")
+            return
+        }
+        val delayMs = NaverTripStartSession.msUntilBriefing(now)
+        val id = synchronized(lock) { startBrief.schedule(line, bus, now + delayMs) }
+        Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] briefing scheduled delayMs=$delayMs")
+        NaverTripStartDebug.note("brief_scheduled delayMs=$delayMs line=[$line] ${NaverTripStartSession.debugSnapshot(now)}")
+        main.postDelayed({ fireStartBrief("timer", timerId = id) }, delayMs)
+    }
+
+    /** Any Naver event. Speaks a briefing whose wait is over. */
+    fun tickStartBrief() {
+        fireStartBrief("event", timerId = null)
+    }
+
+    fun cancelStartBrief() {
+        val dropped = synchronized(lock) { startBrief.cancel() }
+        if (dropped) Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] briefing cancelled")
+    }
+
+    private fun fireStartBrief(how: String, timerId: Int?) {
+        val now = System.currentTimeMillis()
+        val due = synchronized(lock) { startBrief.takeDue(now, timerId) } ?: return
+        if (!NaverTripStartSession.hasSpokenBriefing()) {
+            Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] briefing skip how=$how session_not_spoken")
+            return
+        }
+        if (!firstLegAllows(due.line, "fire")) {
+            NaverTripStartSession.reopenBriefing()
+            synchronized(lock) { gate.resetNaverTripStart() }
+            return
+        }
+        Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] briefing fire how=$how")
+        NaverTripStartDebug.note("brief_fire how=$how line=[${due.line}] ${NaverTripStartSession.debugSnapshot(now)}")
+        speak(startBriefTwice(due.line))
+        val spokenAt = System.currentTimeMillis()
+        NaverTripStartSession.markSpoken(spokenAt)
+        NaverTripStartSession.noteBriefed(briefRouteKey(due.line), spokenAt)
+        if (due.bus) naverBusWait.noteSpoken()
+    }
+
     private fun offerNaverTransit(event: NavigationEvent) {
         val promoted = promoteArmedTripStart(event)
         val incoming = promoted ?: event
@@ -50,6 +113,21 @@ class NavigationEventSpeaker(
             )
         }
         if (incoming.action == NaverMapsTransit.TRIP_START_ACTION) {
+            if (LeftoverSubway.againstBusScope(incoming.rawText)) {
+                pinFromTripStart(incoming)
+                Log.i(
+                    NaverMapNotification.TAG,
+                    "[NAVER_TRIP] skip leftover subway " +
+                        "scope=BUS line=${CurrentGuidanceScope.snapshot().line.orEmpty()}",
+                )
+                return
+            }
+            if (!firstLegAllows(NavigationEventSpeech.line(incoming), "offer")) return
+            if (NaverTripStartSession.hasSpokenBriefing()) {
+                pinFromTripStart(incoming)
+                Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] skip start, briefing already spoken")
+                return
+            }
             pinFromTripStart(incoming)
             val line = NavigationEventSpeech.line(incoming)
             if (line == null) {
@@ -83,21 +161,13 @@ class NavigationEventSpeaker(
                 accepted = true,
                 drop = null,
             )
-            speak(line)
-            NaverTripStartSession.markSpoken(System.currentTimeMillis())
-            if (incoming.rawText == NaverMapsTransit.KIND_BUS) {
-                naverBusWait.noteSpoken()
-            }
+            briefStart(line, bus = incoming.rawText == NaverMapsTransit.KIND_BUS)
             if (incoming.rawText == NaverMapsTransit.KIND_BUS &&
                 incoming.busInfo?.arrivals.orEmpty().size >= 2
             ) {
                 NaverNextTrainNotice.request()
             }
             flushNextTrain()
-            return
-        }
-        if (synchronized(lock) { gate.noteAlightThenTransfer(event.title, event.action) }) {
-            Log.i(NaverMapNotification.TAG, "[NAVER_TRANSFER_SUBWAY] pending first subway ETA")
             return
         }
         if (event.action == NaverMapsTransit.TRANSFER_WALK_ACTION ||
@@ -127,12 +197,12 @@ class NavigationEventSpeaker(
             Log.i(NaverMapNotification.TAG, "[NAVER_TRIP] hold bus until briefing")
             return
         }
+        // Naver itself says the stop before alighting; saying it again doubles the voice.
         if (event.action == NaverMapsTransit.PREPARE_ALIGHT_ACTION) {
             val line = NavigationEventSpeech.line(event) ?: return
             val accepted = synchronized(lock) { gate.accept(event) }
             if (!accepted) return
-            Log.i(NaverMapNotification.TAG, "[NAVER_PREPARE_ALIGHT] speak $line")
-            speak(line)
+            Log.i(NaverMapNotification.TAG, "[NAVER_PREPARE_ALIGHT] naver speaks, silent $line")
             return
         }
         // Observation tier: the car numbers already ride on the transfer wait line, and
@@ -150,8 +220,23 @@ class NavigationEventSpeaker(
         if (event.rawText == NaverMapsTransit.KIND_SUBWAY &&
             event.busInfo?.arrivals?.isNotEmpty() == true
         ) {
+            if (LeftoverSubway.againstBusScope(event.rawText)) {
+                Log.i(
+                    NaverMapNotification.TAG,
+                    "[NAVER_SUBWAY_STAGE] skip leftover subway " +
+                        "scope=BUS line=${CurrentGuidanceScope.snapshot().line.orEmpty()}",
+                )
+                return
+            }
             val arrival = event.busInfo?.arrivals?.firstOrNull()
             val subwayLine = arrival?.line.orEmpty()
+            if (SeoulSubwayCountdownShadow.owns(subwayLine)) {
+                Log.i(
+                    NaverMapNotification.TAG,
+                    "[NAVER_SUBWAY_STAGE] skip seoul countdown owns line=$subwayLine",
+                )
+                return
+            }
             if (!NaverSubwayPin.allows(subwayLine)) {
                 Log.i(
                     NaverMapNotification.TAG,
@@ -165,17 +250,21 @@ class NavigationEventSpeaker(
                 gate.rememberNaverSubwayClocks(event)
                 gate.withRememberedSubwayNext(event)
             }
-            speakNextTrainOnce(waitEvent)
-            val line = NavigationEventSpeech.line(waitEvent) ?: return
-            val transferBrief = synchronized(lock) { gate.acceptTransferSubwayBrief(waitEvent) }
-            if (transferBrief) {
-                val detailed = NavigationEventSpeech.line(waitEvent, includeFastAlight = true) ?: line
-                Log.i(NaverMapNotification.TAG, "[NAVER_TRANSFER_SUBWAY] speak $detailed")
-                speak(detailed)
+            if (gate.isArrivedOnly(waitEvent)) {
+                Log.i(NaverMapNotification.TAG, "[NAVER_SUBWAY_STAGE] skip arrived line=$subwayLine")
                 return
             }
+            speakNextTrainOnce(waitEvent)
+            val line = NavigationEventSpeech.line(waitEvent) ?: return
             val brief = synchronized(lock) { gate.acceptNaverSubwayWalkBrief(waitEvent) }
             if (brief) {
+                if (Transfer.seoulOwnsAlight(subwayLine)) {
+                    Log.i(
+                        NaverMapNotification.TAG,
+                        "[NAVER_SUBWAY_BRIEF] skip seoul owns line=$subwayLine",
+                    )
+                    return
+                }
                 Log.i(NaverMapNotification.TAG, "[NAVER_SUBWAY_BRIEF] speak $line")
                 speak(line)
                 return
@@ -234,6 +323,17 @@ class NavigationEventSpeaker(
         return NaverTripStartParser.asTripStart(event)
     }
 
+    /** Every trip-start path passes here: a briefing that names another leg than the start screen's first one stays quiet. */
+    private fun firstLegAllows(vehicle: String?, where: String): Boolean {
+        val leg = NaverTripStartSession.firstLeg()
+        if (NaverFirstLeg.allows(vehicle, leg)) return true
+        Log.i(
+            NaverMapNotification.TAG,
+            "[NAVER_TRIP] briefing skip not_first_leg at=$where vehicle=${vehicle.orEmpty()} leg=${leg?.label()}",
+        )
+        return false
+    }
+
     private fun pinFromTripStart(event: NavigationEvent) {
         val pinned = NaverTripPin.apply(event, naverBusWait) ?: return
         Log.i(NaverMapNotification.TAG, "[NAVER_PIN] $pinned")
@@ -256,12 +356,37 @@ class NavigationEventSpeaker(
         return direction.endsWith("방면") && event.rawText.trim().isNotEmpty()
     }
 
+    private var lastSpoken: SpeechMouth.Spoken? = null
+
     private fun speak(text: String) {
-        NaverTripStartDebug.step6(text = text, path = "sink")
-        sink.speak(text)
+        val admitted = SpeechMouth.admit(text, System.currentTimeMillis(), lastSpoken)
+        if (admitted == null) {
+            NaverTripStartDebug.step6(text = text, path = "mouth_swallowed")
+            return
+        }
+        lastSpoken = admitted.second
+        NaverTripStartDebug.step6(text = admitted.first, path = "sink")
+        sink.speak(admitted.first)
     }
 
     fun shutdown() {
         sink.shutdown()
     }
+}
+
+/** The line a briefing opens with: "99번, …" → 99번, "3호선이 …" → 3호선. */
+internal fun briefRouteKey(line: String): String? {
+    val head = line.trim().split(' ', ',').firstOrNull { it.isNotBlank() } ?: return null
+    return head.removeSuffix("이").ifBlank { null }
+}
+
+/**
+ * One utterance: the whole briefing, then its first sentence (the first vehicle) once more.
+ * Two separate lines would be swallowed as a repeat.
+ */
+internal fun startBriefTwice(line: String): String {
+    val text = line.trim()
+    if (text.isEmpty()) return text
+    val first = Regex("""^.*?[.!?](?=\s|$)""").find(text)?.value ?: text
+    return "$text $first"
 }

@@ -23,8 +23,21 @@ object RouteCardCopy {
         RouteCardMode.TRANSIT -> "대중교통"
     }
 
-    fun detailLine(card: RouteCard): String =
-        "${providerLabel(card.provider)} · ${modeLabel(card.mode)}"
+    /** Card subtitle: transfer subway when known, else mode. */
+    fun modeOrTransferLabel(card: RouteCard): String {
+        val note = card.transferNote?.trim().orEmpty()
+        if (note.isNotEmpty()) return note
+        return modeLabel(card.mode)
+    }
+
+    fun detailLine(card: RouteCard): String {
+        val note = card.transferNote?.trim().orEmpty()
+        return if (note.isNotEmpty()) {
+            "${providerLabel(card.provider)} · $note"
+        } else {
+            "${providerLabel(card.provider)} · ${modeLabel(card.mode)}"
+        }
+    }
 
     fun lastUsedLabel(
         atMillis: Long,

@@ -4,10 +4,13 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import android.util.Log
 
+/**
+ * The service's own switch screen (ACCESSIBILITY_DETAILS_SETTINGS) needs
+ * OPEN_ACCESSIBILITY_DETAILS_SETTINGS, which only the system holds: apps open the list.
+ */
 object AccessibilityAccess {
 
     private const val TAG = "GyolimA11y"
@@ -24,19 +27,6 @@ object AccessibilityAccess {
 
     fun openList(activity: Activity): Boolean =
         startSafely(activity, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-
-    fun openSettings(activity: Activity, service: Class<*>): Boolean {
-        val component = ComponentName(activity, service)
-        val flattened = component.flattenToString()
-        return openDetails(activity, flattened) || openList(activity)
-    }
-
-    private fun openDetails(activity: Activity, flattened: String): Boolean {
-        if (Build.VERSION.SDK_INT < 31) return false
-        val details = Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-        details.putExtra(Intent.EXTRA_COMPONENT_NAME, flattened)
-        return startSafely(activity, details)
-    }
 
     private fun startSafely(activity: Activity, intent: Intent): Boolean = try {
         activity.startActivity(intent)

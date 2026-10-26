@@ -40,7 +40,9 @@ object StartBriefing {
         val first = pickSoonest(own) ?: return StartBriefingOutcome(
             silence = StartBriefingSilence.NO_SCOPE_ROW,
         )
-        val next = pickSoonest(own.filterNot { it.line == first.line && it.eta == first.eta })
+        val next = pickSoonest(
+            reading.rows.filterNot { it.line == first.line && it.eta == first.eta },
+        )
         val text = StartBriefingLine.text(
             kind = scope.kind,
             first = first,

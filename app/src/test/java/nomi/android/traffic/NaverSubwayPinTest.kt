@@ -1,5 +1,7 @@
 package nomi.android.traffic
 
+import nomi.android.traffic.scope.CurrentGuidanceScope
+import nomi.android.traffic.scope.GuidanceKind
 import nomi.product.nav.NavigationBusArrival
 import nomi.product.nav.NavigationBusInfo
 import nomi.product.nav.NavigationEvent
@@ -26,12 +28,14 @@ class NaverSubwayPinTest {
     @Before
     fun setUp() {
         NaverSubwayPin.reset()
+        CurrentGuidanceScope.resetForTest()
         tracker = NaverBusWaitTracker()
     }
 
     @After
     fun tearDown() {
         NaverSubwayPin.reset()
+        CurrentGuidanceScope.resetForTest()
     }
 
     @Test
@@ -88,6 +92,43 @@ class NaverSubwayPinTest {
         assertNull(NaverTripPin.apply(tripStart("  ", subway = true), tracker))
         assertNull(NaverSubwayPin.pinned())
         assertFalse(tracker.isClosedForSubwayTrip())
+    }
+
+    @Test
+    fun `leftover subway does not pin when scope is already a bus`() {
+        CurrentGuidanceScope.onScreen(
+            listOf("81", "2분", "4정류장", "여유", "안내 중"),
+        )
+        NaverSubwayPin.pin("3호선")
+        assertEquals(
+            "leftover_subway_skip bus seed=81",
+            NaverTripPin.apply(tripStart("3호선", subway = true), tracker),
+        )
+        assertNull(NaverSubwayPin.pinned())
+        assertFalse(tracker.isClosedForSubwayTrip())
+        assertEquals(setOf("81"), tracker.pinnedBusLines())
+        assertEquals(GuidanceKind.BUS, CurrentGuidanceScope.snapshot().kind)
+        assertEquals("81", CurrentGuidanceScope.snapshot().line)
+    }
+
+    @Test
+    fun `subway first trip still pins when scope is subway`() {
+        CurrentGuidanceScope.onScreen(listOf("안내 중", "3호선", "오금행"))
+        assertEquals("subway=3호선", NaverTripPin.apply(tripStart("3호선", subway = true), tracker))
+        assertEquals("3호선", NaverSubwayPin.pinned())
+        assertTrue(tracker.isClosedForSubwayTrip())
+    }
+
+    @Test
+    fun `drop leftover subway pin when scope is bus`() {
+        NaverSubwayPin.pin("3호선")
+        CurrentGuidanceScope.onScreen(
+            listOf("81", "2분", "4정류장", "여유", "안내 중"),
+        )
+        assertTrue(LeftoverSubway.dropPinIfBusScope())
+        assertNull(NaverSubwayPin.pinned())
+        assertFalse(LeftoverSubway.againstBusScope(NaverMapsTransit.KIND_BUS))
+        assertTrue(LeftoverSubway.againstBusScope(NaverMapsTransit.KIND_SUBWAY))
     }
 
     @Test

@@ -20,6 +20,8 @@ data class TransitRow(
     val eta: String,
     val occupancy: String? = null,
     val stopsRemaining: Int? = null,
+    /** `급행` or `일반` when the source said so. Null leaves the sentence unchanged. */
+    val service: String? = null,
 )
 
 enum class ObservationSource {

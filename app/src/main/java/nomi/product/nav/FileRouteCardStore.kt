@@ -80,6 +80,7 @@ private data class PersistedRouteCard(
     val destinationName: String,
     val mode: String,
     val lastUsedAtMillis: Long,
+    val transferNote: String? = null,
 ) {
     fun toModel(): RouteCard? {
         val source = runCatching { NavigationEventSource.valueOf(provider) }.getOrNull()
@@ -93,6 +94,7 @@ private data class PersistedRouteCard(
             destinationName = name,
             mode = cardMode,
             lastUsedAtMillis = lastUsedAtMillis,
+            transferNote = transferNote?.trim()?.ifEmpty { null },
         )
     }
 
@@ -103,6 +105,7 @@ private data class PersistedRouteCard(
             destinationName = card.destinationName,
             mode = card.mode.name,
             lastUsedAtMillis = card.lastUsedAtMillis,
+            transferNote = card.transferNote,
         )
     }
 }

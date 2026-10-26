@@ -87,7 +87,25 @@ class StartBriefingTest {
             ),
         )
         assertEquals(
-            "88B번, 88B번 버스가 8분 후 도착합니다. 다음은 88B번, 12분 후 도착입니다.",
+            "88B번, 88B번 버스가 8분 후 도착합니다. 다음은 88A번, 곧 도착합니다.",
+            out.request!!.text,
+        )
+    }
+
+    @Test
+    fun `next vehicle on the live board can be another line`() {
+        val out = StartBriefing.consider(
+            scope(line = "99"),
+            reading(
+                TransitKind.BUS,
+                TransitRow("99", "11분"),
+                TransitRow("81", "16분"),
+                TransitRow("81", "24분"),
+                walkMinutes = 3,
+            ),
+        )
+        assertEquals(
+            "99번, 99번 버스가 11분 후 도착합니다. 정류장까지는 걸어서 약 3분입니다. 다음은 81번, 16분 후 도착입니다.",
             out.request!!.text,
         )
     }

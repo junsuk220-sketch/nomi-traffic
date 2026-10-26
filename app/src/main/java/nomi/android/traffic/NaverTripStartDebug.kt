@@ -1,15 +1,27 @@
 package nomi.android.traffic
 
 import android.util.Log
+import java.io.File
 
 /**
- * Temporary field instrumentation for trip-start drop tracing.
+ * Field instrumentation for trip-start tracing, also written to [FILE_NAME]:
+ * logcat alone was gone by the time the 2026-10-11 briefings were looked at.
  * Log only — does not change speak / pin / session decisions.
  */
 internal object NaverTripStartDebug {
 
     private const val TAG = "TRIP_DEBUG"
-    private const val BUILD = "vc88-trip-debug"
+    private const val BUILD = "vc182-trip-confirm"
+    const val FILE_NAME = "nomi-tripstart.log"
+    const val MAX_FILE_BYTES = 1024L * 1024L
+
+    @Volatile
+    private var dir: File? = null
+
+    fun attach(filesDir: File) {
+        if (!FieldLogs.enabled) return
+        dir = filesDir
+    }
 
     @Volatile
     private var lastStep2Key: String? = null
@@ -115,6 +127,13 @@ internal object NaverTripStartDebug {
     private fun emit(message: String) {
         try {
             Log.i(TAG, message)
+        } catch (_: Throwable) {
+        }
+        val folder = dir ?: return
+        try {
+            val file = File(folder, FILE_NAME)
+            if (file.length() > MAX_FILE_BYTES) file.delete()
+            file.appendText("${System.currentTimeMillis()} $message\n")
         } catch (_: Throwable) {
         }
     }

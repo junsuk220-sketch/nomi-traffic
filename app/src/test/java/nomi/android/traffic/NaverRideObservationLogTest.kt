@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -21,6 +22,7 @@ class NaverRideObservationLogTest {
 
     @Test
     fun `default is off and writes nothing`() {
+        assumeTrue(FieldLogs.enabled)
         NaverRideObservationLog.enabled = false
         NaverRideObservationLog.writeInline = true
         NaverRideObservationLog.attach(tmp.root)
@@ -46,6 +48,7 @@ class NaverRideObservationLogTest {
 
     @Test
     fun `flag file turns logger on at attach`() {
+        assumeTrue(FieldLogs.enabled)
         tmp.newFile(NaverRideObservationLog.FLAG_NAME)
         NaverRideObservationLog.enabled = false
         NaverRideObservationLog.attach(tmp.root)

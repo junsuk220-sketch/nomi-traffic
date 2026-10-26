@@ -132,6 +132,15 @@ class NaverSubwayRememberedNextTest {
     }
 
     @Test
+    fun `next train clock reopens the ladder without an arrived reading`() {
+        val gate = NavigationEventSpeechGate()
+        assertTrue(gate.accept(relative("7분", at = wall(14, 18, 0))))
+        assertFalse(gate.accept(relative("6분", at = wall(14, 19, 0))))
+        gate.rememberNaverSubwayClocks(clocks("14:37", "14:49", at = wall(14, 25, 39)))
+        assertTrue(gate.accept(relative("5분", at = wall(14, 32, 0))))
+    }
+
+    @Test
     fun `a different line does not inherit the remembered next clock`() {
         val gate = NavigationEventSpeechGate()
         gate.rememberNaverSubwayClocks(clocks("14:25", "14:37", "14:49", at = wall(14, 13, 29)))

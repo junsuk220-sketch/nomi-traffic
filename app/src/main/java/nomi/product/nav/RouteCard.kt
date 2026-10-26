@@ -13,6 +13,8 @@ data class RouteCard(
     val destinationName: String,
     val mode: RouteCardMode,
     val lastUsedAtMillis: Long,
+    /** Debug/pre-release: remembered transfer subway, e.g. "3호선 정발산역". */
+    val transferNote: String? = null,
 ) {
     fun key(): String = keyOf(provider, destinationName, mode)
 

@@ -12,11 +12,12 @@ import nomi.product.nav.NavigationEventType
  */
 object NaverTransferAccessibilityParser {
 
+    // `삼송역 8번 출구에서` is an exit; a stop named `신사역3번출구` is not.
     private val exitWalkOneBlob = Regex(
-        """(\d+)\s*번\s*출구에서\s*도보(?:\s*\d+\s*m)?\s*[·•.]?\s*(\d+)\s*분""",
+        """(?<![가-힣])(\d+)\s*번\s*출구에서\s*도보(?:\s*\d+\s*m)?\s*[·•.]?\s*(\d+)\s*분""",
         RegexOption.IGNORE_CASE,
     )
-    private val exitOnly = Regex("""(\d+)\s*번\s*출구""")
+    private val exitOnly = Regex("""(?<![가-힣])(\d+)\s*번\s*출구""")
     private val walkMetersOnly = Regex("""도보\s*\d+\s*m""", RegexOption.IGNORE_CASE)
     private val bareMinutes = Regex("""^(\d+)\s*분$""")
     private val doorHint = Regex("""^내리는\s*문""")

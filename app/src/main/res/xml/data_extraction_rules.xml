@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Setup state follows this phone's switches, which a restore does not bring back. -->
+<!-- Field observation/debug files (FieldLogs.FILES) are never backed up or transferred. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="setup.xml" />
+        <exclude domain="file" path="google-ride-observe.jsonl" />
+        <exclude domain="file" path="google-ride-observe.1.jsonl" />
+        <exclude domain="file" path="naver-ride-observe.jsonl" />
+        <exclude domain="file" path="naver-ride-observe.1.jsonl" />
+        <exclude domain="file" path="nomi-speech.log" />
+        <exclude domain="file" path="nomi-transfer.log" />
+        <exclude domain="file" path="nomi-fastcar.log" />
+        <exclude domain="file" path="nomi-nexttrain.log" />
+        <exclude domain="file" path="nomi-bustransfer.log" />
+        <exclude domain="file" path="nomi-tripstart.log" />
+        <exclude domain="file" path="nomi-nextbus.log" />
+        <exclude domain="file" path="nomi-routelegs.log" />
+        <exclude domain="file" path="nomi-buswait-trace.jsonl" />
+        <exclude domain="file" path="nomi-eventfirst.jsonl" />
+        <exclude domain="file" path="nomi-google-feed.log" />
+        <exclude domain="file" path="nomi-google-brief.log" />
+        <exclude domain="file" path="nomi-google-walk.log" />
+        <exclude domain="file" path="nomi-google-wait.log" />
+        <exclude domain="file" path="nomi-google-board.log" />
+        <exclude domain="file" path="nomi-google-ride.log" />
+        <exclude domain="file" path="nomi-google-prepare.log" />
+        <exclude domain="file" path="nomi-google-alight.log" />
+        <exclude domain="file" path="nomi-google-transfer.log" />
+        <exclude domain="file" path="nomi-google-countdown.log" />
+        <exclude domain="file" path="nomi-setup-nudge.log" />
+        <exclude domain="file" path="nomi-beacon.log" />
+        <exclude domain="file" path="nomi-google-beacon.log" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="setup.xml" />
+        <exclude domain="file" path="google-ride-observe.jsonl" />
+        <exclude domain="file" path="google-ride-observe.1.jsonl" />
+        <exclude domain="file" path="naver-ride-observe.jsonl" />
+        <exclude domain="file" path="naver-ride-observe.1.jsonl" />
+        <exclude domain="file" path="nomi-speech.log" />
+        <exclude domain="file" path="nomi-transfer.log" />
+        <exclude domain="file" path="nomi-fastcar.log" />
+        <exclude domain="file" path="nomi-nexttrain.log" />
+        <exclude domain="file" path="nomi-bustransfer.log" />
+        <exclude domain="file" path="nomi-tripstart.log" />
+        <exclude domain="file" path="nomi-nextbus.log" />
+        <exclude domain="file" path="nomi-routelegs.log" />
+        <exclude domain="file" path="nomi-buswait-trace.jsonl" />
+        <exclude domain="file" path="nomi-eventfirst.jsonl" />
+        <exclude domain="file" path="nomi-google-feed.log" />
+        <exclude domain="file" path="nomi-google-brief.log" />
+        <exclude domain="file" path="nomi-google-walk.log" />
+        <exclude domain="file" path="nomi-google-wait.log" />
+        <exclude domain="file" path="nomi-google-board.log" />
+        <exclude domain="file" path="nomi-google-ride.log" />
+        <exclude domain="file" path="nomi-google-prepare.log" />
+        <exclude domain="file" path="nomi-google-alight.log" />
+        <exclude domain="file" path="nomi-google-transfer.log" />
+        <exclude domain="file" path="nomi-google-countdown.log" />
+        <exclude domain="file" path="nomi-setup-nudge.log" />
+        <exclude domain="file" path="nomi-beacon.log" />
+        <exclude domain="file" path="nomi-google-beacon.log" />
+    </device-transfer>
+</data-extraction-rules>

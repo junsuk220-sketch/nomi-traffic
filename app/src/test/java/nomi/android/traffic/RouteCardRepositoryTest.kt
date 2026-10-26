@@ -63,5 +63,47 @@ class RouteCardRepositoryTest {
                 ),
             ),
         )
+        assertEquals(
+            "3호선 정발산역",
+            RouteCardCopy.modeOrTransferLabel(
+                RouteCard(
+                    provider = NavigationEventSource.NAVER,
+                    destinationName = "광닭발",
+                    mode = RouteCardMode.TRANSIT,
+                    lastUsedAtMillis = used,
+                    transferNote = "3호선 정발산역",
+                ),
+            ),
+        )
+        assertEquals(
+            "Naver · 3호선 정발산역",
+            RouteCardCopy.detailLine(
+                RouteCard(
+                    provider = NavigationEventSource.NAVER,
+                    destinationName = "광닭발",
+                    mode = RouteCardMode.TRANSIT,
+                    lastUsedAtMillis = used,
+                    transferNote = "3호선 정발산역",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `transfer note is kept on the same destination card`() {
+        val repo = RouteCardRepository(InMemoryRouteCardStore())
+        repo.record(NavigationEventSource.NAVER, "광닭발", RouteCardMode.TRANSIT, 10L)
+        repo.record(
+            NavigationEventSource.NAVER,
+            "광닭발",
+            RouteCardMode.TRANSIT,
+            20L,
+            transferNote = "3호선 정발산역",
+        )
+        val cards = repo.recent()
+        assertEquals(1, cards.size)
+        assertEquals("광닭발", cards[0].destinationName)
+        assertEquals("3호선 정발산역", cards[0].transferNote)
+        assertEquals(20L, cards[0].lastUsedAtMillis)
     }
 }

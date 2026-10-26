@@ -35,6 +35,7 @@ internal object CurrentGuidanceScopeDebug {
         val event = when {
             !before.active && after.active -> "CREATED"
             before.active && !after.active -> "ENDED"
+            cue == "leftover_start" && !after.active -> "LEFTOVER_START"
             before.active && after.active &&
                 (before.line != after.line || before.kind != after.kind ||
                     before.generation != after.generation) -> "CHANGED"
@@ -44,9 +45,9 @@ internal object CurrentGuidanceScopeDebug {
                 before.line == after.line -> "HOLD_ALTS"
             else -> return
         }
-        if (event == "HOLD_ALTS") {
+        if (event == "HOLD_ALTS" || event == "LEFTOVER_START") {
             val key = listOf(
-                after.generation, after.kind, after.line, alts,
+                event, after.generation, after.kind, after.line, alts,
             ).joinToString("|")
             if (key == lastHoldKey) return
             lastHoldKey = key

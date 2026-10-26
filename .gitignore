@@ -16,3 +16,7 @@ local.properties
 
 # Pulled field traces (device data, never committed)
 .field/
+pull*/
+logcat_dump.txt
+tmp-logs/
+tmp-eta-parse.py

@@ -240,10 +240,20 @@ object NavigationEventSpeech {
         val minutes = etaMinutesPattern.find(eta)?.groupValues?.get(1)?.toIntOrNull() ?: return null
         if (minutes < 1) return null
         val subject = subwayWaitSubject(line, bound)
+        // Naver wait speaks the rung, not the raw minute. 4분 with no 5분 is "5분".
+        val spoken = if (repeatCurrentMinutes) ladderMinutes(minutes) else minutes
         if (repeatCurrentMinutes) {
-            return "$subject ${minutes}분 후 도착합니다."
+            return "$subject ${spoken}분 후 도착합니다."
         }
-        return "$subject ${minutes}분 후 출발해요."
+        return "$subject ${spoken}분 후 출발해요."
+    }
+
+    /** 2분, 3~5분, 6~10분. Past 10분 stays the raw minute; it is not a rung. */
+    private fun ladderMinutes(minutes: Int): Int = when {
+        minutes <= 2 -> 2
+        minutes <= 5 -> 5
+        minutes <= 10 -> 10
+        else -> minutes
     }
 
     /** First `오금행 (` in the 302 body is this train. No 행 → keep `3호선이`. */

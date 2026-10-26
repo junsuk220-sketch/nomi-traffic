@@ -1,35 +1,44 @@
 package nomi.android.traffic
 
 import android.accessibilityservice.AccessibilityService
+import nomi.android.traffic.api.google.brief.GoogleStartBriefShadow
+import nomi.android.traffic.api.google.transfer.GoogleTransferShadow
+import nomi.android.traffic.setupnudge.SetupNudgeShadow
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import nomi.traffic.A11yDoneNotice
+import nomi.traffic.A11yItem
 
 /**
- * Reads only the current Google Maps transit screen and hands events to [NavigationEventVoice].
- * Does not call TTS itself or click.
+ * Reads the Google Maps transit screen for the route card and the field log.
+ * The start-briefing cell may speak once after 시작 or when guidance goes live.
+ * The transfer cell takes the transfer bus clock from the live screen.
+ * Other Google speech comes from notifications.
  */
 class GoogleTransitAccessibilityService : AccessibilityService() {
-
-    private val dedup = GoogleTransitAccessibilityDedup()
-    private var awaitTripStart = false
-    private var wasLive = false
-    private var tripStartSpokenThisLive = false
-    private var quietParseUntilMs = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         val pkg = event.packageName?.toString() ?: return
         if (pkg != GoogleMapsTransit.PACKAGE) return
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            val desc = event.contentDescription
-            val texts = event.text
-            val textJoin = texts?.joinToString("") ?: ""
-            if (GoogleTransitAccessibilityParser.isGlanceStartButton(desc, texts) ||
-                textJoin.trim() == "시작"
-            ) {
-                armTripStart(force = true)
-                Log.i(GoogleMapsTransit.TAG, "[GOOGLE_TRIP] start button clicked")
+            try {
+                GoogleRideObservationLog.recordClick(
+                    System.currentTimeMillis(),
+                    event.text?.joinToString("") ?: "",
+                    event.contentDescription?.toString(),
+                )
+            } catch (_: Throwable) {
+            }
+            try {
+                val texts = event.text
+                if (GoogleTransitAccessibilityParser.isGlanceStartButton(event.contentDescription, texts) ||
+                    texts?.joinToString("")?.trim() == "시작"
+                ) {
+                    GoogleStartBriefShadow.onStartClick()
+                }
+            } catch (_: Throwable) {
             }
         }
         val root = rootInActiveWindow ?: return
@@ -38,53 +47,22 @@ class GoogleTransitAccessibilityService : AccessibilityService() {
             val tree = collect(root)
             val now = System.currentTimeMillis()
             val live = GoogleTransitAccessibilityParser.isLiveGuidance(tree)
-            if (live && !wasLive) {
-                if (!tripStartSpokenThisLive) {
-                    armTripStart(force = false)
-                    Log.i(GoogleMapsTransit.TAG, "[GOOGLE_TRIP] live guidance began")
-                }
+            val blobs = flatten(tree)
+            try {
+                GoogleRideObservationLog.recordTree(now, live, blobs)
+            } catch (_: Throwable) {
             }
-            if (!live && wasLive) {
-                awaitTripStart = false
-                quietParseUntilMs = 0L
-                tripStartSpokenThisLive = false
-                dedup.resetTripStart()
+            try {
+                GoogleStartBriefShadow.onScreen(tree, live, now)
+            } catch (_: Throwable) {
             }
-            wasLive = live
-            if (awaitTripStart) {
-                when (
-                    val decision = GoogleTransitAccessibilityParser.tripStartDecision(
-                        packageName = pkg,
-                        root = tree,
-                        timestampMillis = now,
-                    )
-                ) {
-                    is GoogleTransitAccessibilityParser.TripStartDecision.Speak -> {
-                        if (dedup.accept(decision.event)) {
-                            Log.i(
-                                GoogleMapsTransit.TAG,
-                                GoogleTransitAccessibilityParser.formatLog(decision.event),
-                            )
-                            NavigationEventVoice.offer(this, decision.event)
-                            awaitTripStart = false
-                            tripStartSpokenThisLive = true
-                            quietParseUntilMs = now + TRIP_START_QUIET_MS
-                        }
-                    }
-                    GoogleTransitAccessibilityParser.TripStartDecision.Pending -> Unit
-                }
+            try {
+                GoogleTransferShadow.onScreen(blobs, live, now)
+            } catch (_: Throwable) {
             }
-            if (live && now >= quietParseUntilMs) {
-                val parsed = GoogleTransitAccessibilityParser.parse(
-                    packageName = pkg,
-                    root = tree,
-                    timestampMillis = now,
-                )
-                for (item in parsed) {
-                    if (!dedup.accept(item)) continue
-                    Log.i(GoogleMapsTransit.TAG, GoogleTransitAccessibilityParser.formatLog(item))
-                    NavigationEventVoice.offer(this, item)
-                }
+            try {
+                if (live) SetupNudgeShadow.onLiveScreen(this)
+            } catch (_: Throwable) {
             }
             RouteCardAccess.googleIntake(this).onScreen(
                 destinationLabel = GoogleTransitAccessibilityParser.destinationLabel(tree),
@@ -96,27 +74,29 @@ class GoogleTransitAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun armTripStart(force: Boolean) {
-        if (force) {
-            tripStartSpokenThisLive = false
-            NavigationEventVoice.resetGoogleTripStart()
-            dedup.resetTripStart()
-        }
-        awaitTripStart = true
-        quietParseUntilMs = 0L
-        if (!force) {
-            dedup.resetTripStart()
-            NavigationEventVoice.resetGoogleTripStart()
-        }
-    }
-
     override fun onServiceConnected() {
         super.onServiceConnected()
         NavigationEventVoice.prepare(this)
+        GoogleRideObservationLog.attach(filesDir)
+        try {
+            GoogleStartBriefShadow.attach(filesDir)
+        } catch (_: Throwable) {
+        }
         Log.i(GoogleMapsTransit.TAG, "service connected")
+        try {
+            A11yDoneNotice.showIfArmed(this, A11yItem.GOOGLE)
+        } catch (_: Throwable) {
+        }
     }
 
     override fun onInterrupt() = Unit
+
+    private fun flatten(node: GoogleTransitAccessibilityParser.Node, out: MutableList<String> = ArrayList()): List<String> {
+        node.text?.let(out::add)
+        node.contentDesc?.let(out::add)
+        node.children.forEach { flatten(it, out) }
+        return out
+    }
 
     private fun collect(node: AccessibilityNodeInfo): GoogleTransitAccessibilityParser.Node {
         val children = ArrayList<GoogleTransitAccessibilityParser.Node>(node.childCount)
@@ -133,9 +113,5 @@ class GoogleTransitAccessibilityService : AccessibilityService() {
             contentDesc = node.contentDescription?.toString(),
             children = children,
         )
-    }
-
-    companion object {
-        private const val TRIP_START_QUIET_MS = 12_000L
     }
 }

@@ -42,7 +42,14 @@ object NaverTripStartParser {
     private val rideMinutesNearPattern = Regex("""\d+\s*개\s*역""")
     private val listedBusLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
     private val trainBoundBlob = Regex("""^[^,\s()]+행$""")
+    private val routeArrivalClock = Regex("""^(?:오전|오후)\s*\d{1,2}:\d{2}\s*도착$""")
     private const val NO_ARRIVAL_INFO = "도착 예정 정보 없음"
+
+    /** Route options list: several routes, none of them chosen yet. */
+    fun isRouteList(blobs: List<String>): Boolean = blobs.any {
+        val text = clean(it)
+        text == "바로 안내시작" || text == "안내중인 경로 바로가기"
+    }
 
     fun isStartPhrase(raw: String?): Boolean {
         val text = clean(raw)
@@ -86,12 +93,13 @@ object NaverTripStartParser {
             }
         }
         val blobs = flatten(root).map(::clean).filter { it.isNotEmpty() }
+        if (isRouteList(blobs)) return Decision.Pending
         val live = blobs.any { it == "안내 중" }
         val preview = blobs.any { it == "안내시작" }
         val hasStart = blobs.any { NaverActiveGuidanceSlice.isStart(it) }
         val hasEnd = blobs.any { NaverActiveGuidanceSlice.isEnd(it) }
         var sliceMode = "none"
-        val scoped = if (requireLive) {
+        val downward = if (requireLive) {
             if (!live) {
                 NaverTripStartDebug.step2(
                     requireLive = true,
@@ -146,6 +154,13 @@ object NaverTripStartParser {
             }
             sliceMode = "preview_full"
             blobs
+        }
+        // The chosen board sometimes sits above `안내 중` and other routes sit below.
+        // Read that board only when the live tail itself has no bus and no subway.
+        val scoped = if (requireLive && !hasBoarding(downward)) {
+            boardAboveLive(blobs)?.also { sliceMode = "board_above_live" } ?: downward
+        } else {
+            downward
         }
         val walkMinutes = walkMinutes(scoped)
         if (walkMinutes == null && !requireLive) return Decision.Pending
@@ -400,6 +415,22 @@ object NaverTripStartParser {
         return null
     }
 
+    private fun hasBoarding(blobs: List<String>): Boolean =
+        firstBus(blobs) != null || firstSubway(blobs) != null || firstBusLineWithoutEta(blobs) != null
+
+    /**
+     * Selected ride drawn above `안내 중`. A 승차 stop is required so a bare
+     * alternative chip (line and minutes, no boarding stop) is not briefed.
+     */
+    private fun boardAboveLive(blobs: List<String>): List<String>? {
+        val start = blobs.indexOfFirst { NaverActiveGuidanceSlice.isStart(it) }
+        if (start <= 0) return null
+        val above = blobs.subList(0, start)
+        if (above.none { it.contains("승차") }) return null
+        if (!hasBoarding(above)) return null
+        return above
+    }
+
     private fun firstBus(blobs: List<String>): List<NavigationBusArrival>? {
         val arrivals = NaverBusAccessibilityParser.arrivalsFromBlobs(blobs)
         if (arrivals.isEmpty()) return null
@@ -485,6 +516,7 @@ object NaverTripStartParser {
         val minutes = sortedSetOf<Int>()
         for (blob in blobs) {
             if (isTimeRangeBlob(blob)) continue
+            if (routeArrivalClock.matches(blob)) continue
             if (clockAmPmPattern.containsMatchIn(blob)) {
                 for (match in clockAmPmPattern.findAll(blob)) {
                     val hour12 = match.groupValues[1].toIntOrNull() ?: continue

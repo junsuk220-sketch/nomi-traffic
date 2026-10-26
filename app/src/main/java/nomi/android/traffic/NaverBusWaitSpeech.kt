@@ -21,12 +21,21 @@ internal object NaverBusWaitSpeech {
         val arrivals = event.busInfo?.arrivals ?: return event
         if (arrivals.isEmpty()) return event
         val seen = arrivals.joinToString(",") { "${it.line}:${it.eta}" }
-        if (tracker.isClosedForSubwayTrip()) {
+        val closedForSubway = tracker.isClosedForSubwayTrip()
+        val opened = tracker.openFromSubwayTransfer(arrivals.map { it.line })
+        if (closedForSubway && !opened) {
             logSkip(
                 "[NAVER_BUS_STAGE] skip, subway trip " +
                     "subway=${NaverSubwayPin.pinned().orEmpty()} seen=$seen",
             )
             return null
+        }
+        if (opened) {
+            Log.i(
+                NaverMapNotification.TAG,
+                "[NAVER_BUS_STAGE] subway transfer opened lines=" +
+                    arrivals.joinToString(",") { it.line },
+            )
         }
         if (tracker.pinnedBusLines().isEmpty()) {
             ensureSeed()

@@ -30,6 +30,16 @@ class NaverBusWaitTracker(
     private var closedForSubwayTrip = false
     private var boardStop: String? = null
     private var boardStopLocked = false
+    /** Naver said `이번 정류장에서 하차`; the next 302 wait board may name the transfer bus. */
+    private var busAlighted = false
+    /**
+     * Naver said `이동 중` / `정차` — the rider is already aboard.
+     * Sheet boards must stay silent: the live route list still shows the left stop's
+     * next buses (2026-10-16 15:37: 98번 곧 → sheet 98번 2분 while Riding).
+     */
+    private var riding = false
+    /** Naver said a subway `하차 후 환승`; the next bus wait board opens the bus ladder. */
+    private var subwayTransferAtMs = 0L
 
     fun hasSheetTarget(): Boolean = synchronized(lock) { sheetOwns && lastTarget != null }
 
@@ -71,10 +81,80 @@ class NaverBusWaitTracker(
 
     fun isClosedForSubwayTrip(): Boolean = synchronized(lock) { closedForSubwayTrip }
 
+    fun noteBusAlighted() {
+        synchronized(lock) {
+            busAlighted = true
+            riding = false
+            sheetOwns = false
+        }
+    }
+
+    /** 302 `…으로 이동 중` / `… 정차`. Sheet wait boards stay quiet until the next wait board. */
+    fun noteRiding() {
+        synchronized(lock) {
+            riding = true
+            sheetOwns = false
+        }
+    }
+
+    fun isRiding(): Boolean = synchronized(lock) { riding }
+
+    fun noteSubwayTransfer(nowMs: Long = System.currentTimeMillis()) {
+        synchronized(lock) { subwayTransferAtMs = nowMs }
+    }
+
+    /**
+     * The first bus board shortly after Naver's `하차 후 환승`.
+     * A subway-first trip is closed until then. A bus-first trip that later
+     * rides a subway re-seeds the same way, so the transfer bus is not rejected
+     * as another stop.
+     */
+    fun openFromSubwayTransfer(
+        lines: Collection<String>,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean = synchronized(lock) {
+        if (subwayTransferAtMs <= 0L) return@synchronized false
+        if (nowMs - subwayTransferAtMs !in 0..SUBWAY_TRANSFER_WINDOW_MS) {
+            subwayTransferAtMs = 0L
+            return@synchronized false
+        }
+        val clean = lines.map(String::trim).filter(String::isNotEmpty).distinct()
+        if (clean.isEmpty()) return@synchronized false
+        core.seed(clean)
+        openBusForThisStop()
+        subwayTransferAtMs = 0L
+        true
+    }
+
     fun onSheet(
         arrivals: List<NavigationBusArrival>,
         nowMs: Long = System.currentTimeMillis(),
     ): Snapshot = synchronized(lock) {
+        if (riding) {
+            sheetOwns = false
+            BusWaitFieldTrace.record(
+                nowMs = nowMs,
+                source = "sheet",
+                stop = null,
+                pinned = core.pinnedLines(),
+                seeded = core.seededLines(),
+                prevLine = lastTarget?.line,
+                prevEta = lastTarget?.eta,
+                arrivals = arrivals,
+                targetLine = lastTarget?.line,
+                targetEta = lastTarget?.eta,
+                switched = false,
+                speakStage = null,
+                silence = null,
+                path = null,
+            )
+            return Snapshot(
+                target = lastTarget,
+                switched = false,
+                speakStage = null,
+                silence = null,
+            )
+        }
         if (arrivals.isEmpty()) {
             return observeAndTrace(arrivals, nowMs, source = "sheet", stop = null)
         }
@@ -93,7 +173,16 @@ class NaverBusWaitTracker(
         nowMs: Long = System.currentTimeMillis(),
     ): Snapshot? = synchronized(lock) {
         if (arrivals.isEmpty()) return@synchronized null
+        if (busAlighted) {
+            busAlighted = false
+            val pinned = core.pinnedLines()
+            if (pinned.isNotEmpty() && arrivals.none { it.line in pinned }) {
+                core.seed(arrivals.map { it.line })
+                openBusForThisStop()
+            }
+        }
         if (!acceptsBoard(arrivals, stop)) return@synchronized null
+        riding = false
         sheetOwns = false
         observeAndTrace(arrivals, nowMs, source = "notification", stop = stop)
     }
@@ -122,6 +211,7 @@ class NaverBusWaitTracker(
     private fun openBusForThisStop() {
         sheetOwns = false
         closedForSubwayTrip = false
+        riding = false
         boardStop = null
         boardStopLocked = false
     }
@@ -143,6 +233,9 @@ class NaverBusWaitTracker(
             closedForSubwayTrip = false
             boardStop = null
             boardStopLocked = false
+            busAlighted = false
+            riding = false
+            subwayTransferAtMs = 0L
         }
     }
 
@@ -189,6 +282,7 @@ class NaverBusWaitTracker(
     }
 
     companion object {
+        private const val SUBWAY_TRANSFER_WINDOW_MS = 5 * 60_000L
         internal const val SHEET_STALE_MS = 15_000L
         internal const val ETA_SLACK_MINUTES = BusWaitCore.ETA_SLACK_MINUTES
         internal const val STOP_SLACK = BusWaitCore.STOP_SLACK

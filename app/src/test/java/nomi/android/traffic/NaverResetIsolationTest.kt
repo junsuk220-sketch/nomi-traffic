@@ -34,7 +34,6 @@ class NaverResetIsolationTest {
         tracker.releaseSheetOwnership()
         gate.resetNaverTransferCues()
         gate.resetNaverTripStart()
-        gate.resetTransferSubwayBrief()
         gate.resetNaverSubwayBoardBriefs()
         gate.resetNaverJourneyCues()
         gate.resetGoogleTripStart()
@@ -64,7 +63,6 @@ class NaverResetIsolationTest {
         repeat(3) {
             gate.resetGoogleTripStart()
             gate.resetNaverJourneyCues()
-            gate.resetTransferSubwayBrief()
             gate.resetNaverTripStart()
             gate.resetNaverTransferCues()
             tracker.releaseSheetOwnership()

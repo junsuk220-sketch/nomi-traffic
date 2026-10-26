@@ -1,3 +1,5 @@
+﻿import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,14 +8,19 @@ plugins {
 
 android {
     namespace = "nomi.traffic"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "nomi.traffic"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 97
-        versionName = "1.0.0-observe-walk"
+        targetSdk = 36
+        versionCode = 182
+        versionName = "1.0.1-next-train"
+        buildConfigField("String", "SEOUL_SUBWAY_API_KEY", quote(seoulSubwayApiKey()))
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -40,3 +47,15 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     testImplementation("junit:junit:4.13.2")
 }
+
+fun seoulSubwayApiKey(): String {
+    val props = Properties()
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { props.load(it) }
+    }
+    return props.getProperty("SEOUL_SUBWAY_API_KEY", "").trim()
+}
+
+fun quote(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""

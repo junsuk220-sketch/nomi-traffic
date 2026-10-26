@@ -7,13 +7,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The 안내 중 label disappears for a few frames inside one guidance, so the
- * accessibility live edge fires false→true again. Only a session that actually
- * arms may reset the subway cues.
+ * The 안내 중 label leaves the screen inside one guidance (a few frames, or minutes
+ * while the sheet shows the next 승차 card), so the accessibility live edge fires
+ * false→true again. Only a session that actually arms may reset the subway cues.
  */
 class NaverLiveGuidanceFlickerTest {
 
-    private val window = 157L
     private lateinit var gate: NavigationEventSpeechGate
 
     @Before
@@ -28,19 +27,16 @@ class NaverLiveGuidanceFlickerTest {
     }
 
     @Test
-    fun `1 flicker inside a spoken guidance keeps the subway cues`() {
+    fun `1 안내 중 returning inside a spoken guidance keeps the subway cues`() {
         val t0 = 1_000_000L
         assertTrue(NaverTripStartSession.request(t0))
-        assertFalse(NaverTripStartSession.noteLive(t0 + 100, window))
+        assertFalse(NaverTripStartSession.noteLive(t0 + 100))
         NaverTripStartSession.markSpoken(t0 + 4_000)
 
         armSubwayCues()
 
-        // 안내 중 gone for 390ms on the same window — shorter than the debounce.
-        assertFalse(NaverTripStartSession.noteNotLive(t0 + 10_000, window))
         assertFalse(onLiveEdge(t0 + 10_390))
 
-        assertTrue(gate.isTransferSubwayBriefPending())
         assertFalse(gate.accept(boardSoon()))
         assertFalse(gate.acceptNaverSubwayWalkBrief(boardSoon()))
     }
@@ -49,22 +45,15 @@ class NaverLiveGuidanceFlickerTest {
     fun `2 a new guidance arm resets the subway cues`() {
         val t0 = 2_000_000L
         assertTrue(NaverTripStartSession.request(t0))
-        assertFalse(NaverTripStartSession.noteLive(t0 + 100, window))
+        assertFalse(NaverTripStartSession.noteLive(t0 + 100))
         NaverTripStartSession.markSpoken(t0 + 4_000)
 
         armSubwayCues()
 
-        // Guidance really ended, so the next live edge opens a fresh session.
-        assertFalse(NaverTripStartSession.noteNotLive(t0 + 10_000, window))
-        assertTrue(
-            NaverTripStartSession.noteNotLive(
-                t0 + 10_000 + NaverTripStartSession.NOT_LIVE_END_MS,
-                window,
-            ),
-        )
+        // Guidance really ended (안내 종료 / removed card), so the next live edge opens a fresh session.
+        NaverTripStartSession.reset()
         assertTrue(onLiveEdge(t0 + 20_000))
 
-        assertFalse(gate.isTransferSubwayBriefPending())
         assertTrue(gate.accept(boardSoon()))
         assertTrue(gate.acceptNaverSubwayWalkBrief(boardSoon()))
     }
@@ -74,15 +63,13 @@ class NaverLiveGuidanceFlickerTest {
      * announces the transition once via NavigationEventVoice.onNaverGuidanceStarted.
      */
     private fun onLiveEdge(nowMs: Long): Boolean {
-        val armed = NaverTripStartSession.noteLive(nowMs, window)
+        val armed = NaverTripStartSession.noteLive(nowMs)
         if (armed) gate.resetNaverJourneyCues()
         return armed
     }
 
     private fun armSubwayCues() {
-        assertTrue(gate.noteAlightThenTransfer("이번 정류장에서 하차 후 환승", null))
         assertTrue(gate.acceptNaverSubwayWalkBrief(boardSoon()))
-        assertTrue(gate.isTransferSubwayBriefPending())
     }
 
     private fun boardSoon() = NaverNotificationParser.parse(

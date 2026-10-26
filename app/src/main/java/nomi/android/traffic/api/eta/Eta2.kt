@@ -4,7 +4,7 @@ import nomi.android.traffic.speech.SpeechLedger
 import nomi.android.traffic.track.VehicleKey
 import nomi.android.traffic.track.VehicleSnapshot
 
-/** 1 < minutes ≤ 2. Own spoken set. Does not speak in shadow. */
+/** 1 < minutes ≤ 2. Own spoken set. Host logs only. */
 object Eta2 {
     private val spoken = mutableSetOf<VehicleKey>()
 

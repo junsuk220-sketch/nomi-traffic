@@ -7,6 +7,8 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
+import nomi.android.traffic.api.bustransfer.BusTransferShadow
+import nomi.android.traffic.api.seoulcountdown.SeoulSubwayCountdownShadow
 import nomi.android.traffic.buswait.BusWaitFieldTrace
 import nomi.android.traffic.speech.SpeechLedger
 import nomi.product.nav.NavigationEvent
@@ -65,6 +67,63 @@ object NavigationEventVoice {
         }
     }
 
+    /** Eta host only. Same sink as other Naver speech. */
+    fun speakEta(text: String) {
+        val context = appContext ?: return
+        speakNotice(context, text)
+    }
+
+    /** NextTrain host only. One sentence, no trip-start or ladder state. */
+    fun playNextTrain(text: String) {
+        val context = appContext ?: return
+        val line = text.trim()
+        if (line.isEmpty()) return
+        speakNotice(context, line)
+    }
+
+    /** BusTransfer host only. One sentence, no trip-start or bus wait state. */
+    fun playBusTransfer(text: String) {
+        val context = appContext ?: return
+        val line = text.trim()
+        if (line.isEmpty()) return
+        speakNotice(context, line)
+    }
+
+    /** Transfer host only. Does not mark trip-start or bus wait as spoken. */
+    fun playTransferBriefing(text: String) {
+        val context = appContext ?: return
+        val line = text.trim()
+        if (line.isEmpty()) return
+        speakNotice(context, line)
+    }
+
+    /** Google cells only. Touches no Naver state. */
+    fun playGoogle(text: String) {
+        val context = appContext ?: return
+        val line = text.trim()
+        if (line.isEmpty()) return
+        speakNotice(context, line)
+    }
+
+    /** StartBriefing host only. Marks the legacy trip-start as spoken so it does not repeat. */
+    fun playStartBriefing(text: String, bus: Boolean) {
+        val context = appContext ?: return
+        val line = text.trim()
+        if (line.isEmpty()) return
+        try {
+            speaker(context).briefStart(line, bus)
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Every Naver a11y event or notification. A due start briefing speaks here if its timer did not. */
+    fun tickStartBrief() {
+        try {
+            speaker?.tickStartBrief()
+        } catch (_: Exception) {
+        }
+    }
+
     fun onNaverWaitSheetEmpty() {
         synchronized(lock) { naverBusWait.onSheet(emptyList()) }
     }
@@ -91,9 +150,9 @@ object NavigationEventVoice {
 
     /** Guidance ended. Clear pin so the next trip must seed again. */
     fun onNaverGuidanceEnded() {
+        speaker?.cancelStartBrief()
         synchronized(lock) {
             naverBusWait.leave()
-            gate.resetTransferSubwayBrief()
             gate.resetNaverTripStart()
             gate.resetNaverPrepareAlight()
         }
@@ -101,6 +160,8 @@ object NavigationEventVoice {
         NaverNearBoardNotice.reset()
         NaverPrepareAlight.reset()
         NaverSubwayPin.reset()
+        SeoulSubwayCountdownShadow.stop()
+        BusTransferShadow.reset()
         Log.i(NaverMapNotification.TAG, "[NAVER_PIN] cleared — guidance ended")
     }
 
@@ -157,6 +218,36 @@ object NavigationEventVoice {
         synchronized(lock) {
             gate.resetNaverTripStart()
         }
+    }
+
+    /** 302 `이번 정류장에서 하차`: the bus wait may re-seed on the transfer bus board. */
+    fun noteNaverBusAlight(title: String?) {
+        if (title?.trim()?.startsWith("이번 정류장에서 하차") != true) return
+        synchronized(lock) { naverBusWait.noteBusAlighted() }
+        Log.i(NaverMapNotification.TAG, "[NAVER_PIN] bus alighted, next wait board may re-seed")
+    }
+
+    /**
+     * 302 `…으로 이동 중` / `… 정차`: already aboard.
+     * Sheet wait boards stay silent until alight / next wait board / guidance end.
+     */
+    fun noteNaverBusRiding(title: String?) {
+        val head = title?.trim().orEmpty()
+        if (head.isEmpty()) return
+        val stop = RIDING_MOVING.find(head)?.groupValues?.get(1)?.trim()
+            ?: RIDING_STOPPED.find(head)?.groupValues?.get(1)?.trim()
+            ?: return
+        if (stop.isEmpty()) return
+        synchronized(lock) { naverBusWait.noteRiding() }
+        Log.i(NaverMapNotification.TAG, "[NAVER_PIN] riding, sheet bus wait silent")
+    }
+
+    /** A subway alight-transfer opens the closed bus ladder only when a bus board follows. */
+    fun noteNaverSubwayTransfer(title: String?) {
+        val cue = title?.trim().orEmpty()
+        if (!cue.contains("이번 역") || !cue.contains("하차 후 환승")) return
+        synchronized(lock) { naverBusWait.noteSubwayTransfer() }
+        Log.i(NaverMapNotification.TAG, "[NAVER_PIN] subway alighted, next bus board may open")
     }
 
     fun noteNaverAlightStop(raw: String?) {
@@ -250,4 +341,8 @@ object NavigationEventVoice {
             return created
         }
     }
+
+    /** Same title shapes as [nomi.android.traffic.eventfirst.NaverEventParser] Riding. */
+    private val RIDING_MOVING = Regex("""^(.+?)(?:\(으\)로|으로|로) 이동 중$""")
+    private val RIDING_STOPPED = Regex("""^(.+?)\s+정차$""")
 }

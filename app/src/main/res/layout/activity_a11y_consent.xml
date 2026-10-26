@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/paper"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingHorizontal="28dp">
+
+        <TextView
+            android:id="@+id/a11yConsentTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:text="@string/a11y_consent_title"
+            android:textColor="@color/ink"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="28dp"
+            android:layout_height="3dp"
+            android:layout_marginTop="10dp"
+            android:background="@color/amber" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp"
+            android:fillViewport="true"
+            android:overScrollMode="ifContentScrolls">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    style="@style/A11yConsentHeading"
+                    android:text="@string/a11y_consent_why_title" />
+
+                <TextView
+                    style="@style/A11yConsentBody"
+                    android:text="@string/a11y_consent_why" />
+
+                <TextView
+                    style="@style/A11yConsentHeading"
+                    android:text="@string/a11y_consent_read_title" />
+
+                <TextView
+                    style="@style/A11yConsentBody"
+                    android:text="@string/a11y_consent_read" />
+
+                <TextView
+                    style="@style/A11yConsentHeading"
+                    android:text="@string/a11y_consent_use_title" />
+
+                <TextView
+                    style="@style/A11yConsentBody"
+                    android:text="@string/a11y_consent_use" />
+
+                <TextView
+                    style="@style/A11yConsentHeading"
+                    android:text="@string/a11y_consent_send_title" />
+
+                <TextView
+                    style="@style/A11yConsentBody"
+                    android:text="@string/a11y_consent_send" />
+
+                <TextView
+                    style="@style/A11yConsentHeading"
+                    android:text="@string/a11y_consent_decline_title" />
+
+                <TextView
+                    style="@style/A11yConsentBody"
+                    android:text="@string/a11y_consent_decline" />
+            </LinearLayout>
+        </ScrollView>
+
+        <Button
+            android:id="@+id/a11yConsentAgree"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/a11y_consent_agree"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/a11yConsentDisagree"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginBottom="20dp"
+            android:text="@string/a11y_consent_disagree"
+            android:textColor="@color/ink"
+            android:textSize="16sp" />
+    </LinearLayout>
+</FrameLayout>

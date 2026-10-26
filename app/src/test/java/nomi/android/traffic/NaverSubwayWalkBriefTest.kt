@@ -45,7 +45,7 @@ class NaverSubwayWalkBriefTest {
         assertEquals("6분", event.busInfo!!.arrivals[0].eta)
         assertEquals("13분", event.busInfo!!.arrivals[1].eta)
         assertEquals(
-            "3호선 오금행 열차가 6분 후 도착합니다. 다음 열차는 13분 후 도착입니다.",
+            "3호선 오금행 열차가 10분 후 도착합니다. 다음 열차는 13분 후 도착입니다.",
             NavigationEventSpeech.line(event),
         )
         assertTrue(gate.acceptNaverSubwayWalkBrief(event))
