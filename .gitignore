@@ -10,6 +10,9 @@ local.properties
 *.aab
 *.keystore
 *.jks
+node_modules/
+.wrangler/
+.dev.vars
 .tmp*/
 .tmp-*
 *.log
@@ -21,3 +24,8 @@ logcat_dump.txt
 tmp-logs/
 tmp-eta-parse.py
 docs/privacy-policy.local.html
+uidump*.xml
+phone_*.png
+
+# 출근길 비서는 C:\nomi-commute 로 분리됨 (서명키 포함 잔여물 업로드 금지)
+commute/

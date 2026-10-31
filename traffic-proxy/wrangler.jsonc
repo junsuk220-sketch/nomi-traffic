@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nomi-traffic-proxy",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-29",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TRAFFIC_CACHE",
+        "class_name": "TrafficCache"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["TrafficCache"]
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}
