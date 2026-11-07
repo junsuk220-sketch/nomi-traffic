@@ -123,7 +123,7 @@ object TransitObservation {
     private fun isAltBoundary(blob: String): Boolean =
         blob == "바로 안내시작" || blob == "최소시간" || blob == "최소환승"
 
-    private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val busLine = Regex("""^[A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?$""")
     private val minutesAndStops = Regex("""^\d+\s*분\s*\d+\s*정류장""")
     private val stopsOnly = Regex("""^\d+\s*정류장$""")
     private val walkAbout = Regex("""도보\s*약\s*(\d+)\s*분""")

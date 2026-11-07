@@ -285,9 +285,9 @@ object CurrentGuidanceScope {
         Regex("""^(\d+호선|[가-힣A-Za-z0-9]+선|GTX-[A-Za-z])$""")
     private val subwayToken =
         Regex("""(\d+호선|GTX-[A-Za-z])""")
-    private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val busLine = Regex("""^[A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?$""")
     private val busEtaToken =
-        Regex("""([A-Za-z]?\d{1,4}[A-Za-z]?)\s*\(\s*(?:\d+\s*분|곧)""")
+        Regex("""([A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?)\s*\(\s*(?:\d+\s*분|곧)""")
     private val minutesAndStops = Regex("""^\d+\s*분\s*\d+\s*정류장""")
     private val stopsOnly = Regex("""^\d+\s*정류장$""")
     private val startPhrase = Regex("""길\s*안내를\s*시작""")

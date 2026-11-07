@@ -240,9 +240,11 @@ class SpeechSink(
         val started = SystemClock.elapsedRealtime()
         val params = Bundle()
         params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, SPEAK_VOLUME)
-        val code = engine.speak(text, TextToSpeech.QUEUE_ADD, params, utteranceId)
+        // Cells keep "2650번"; TTS hears "이육오공번". Ledger stays on the cell text.
+        val heard = SpeechPronounce.forTts(text)
+        val code = engine.speak(heard, TextToSpeech.QUEUE_ADD, params, utteranceId)
         val speakMs = SystemClock.elapsedRealtime() - started
-        trace("dispatch id=$utteranceId code=$code text=$text")
+        trace("dispatch id=$utteranceId code=$code text=$text tts=$heard")
         if (code != TextToSpeech.SUCCESS) {
             Log.w(NaverMapNotification.TAG, "[NAV_TTS] speak failed code=$code speakMs=$speakMs")
             endSpeakHold()
@@ -251,7 +253,10 @@ class SpeechSink(
         }
         recovering = false
         ledger.record(text, System.currentTimeMillis())
-        Log.i(NaverMapNotification.TAG, "[NAV_SPEECH] $text speakMs=$speakMs vol=$SPEAK_VOLUME")
+        Log.i(
+            NaverMapNotification.TAG,
+            "[NAV_SPEECH] $text tts=$heard speakMs=$speakMs vol=$SPEAK_VOLUME",
+        )
     }
 
     private fun cancelDelayedSpeak() {

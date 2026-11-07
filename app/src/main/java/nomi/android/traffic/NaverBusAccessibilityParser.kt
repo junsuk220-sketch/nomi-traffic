@@ -13,11 +13,11 @@ import nomi.product.nav.NavigationEventType
  */
 object NaverBusAccessibilityParser {
 
-    private val busLine = Regex("""^[A-Za-z]?\d{1,4}[A-Za-z]?$""")
+    private val busLine = Regex("""^[A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?$""")
     private val minutesOnly = Regex("""^(\d+)\s*분$""")
     private val minutesAndStops = Regex("""^(\d+)\s*분\s*(\d+)\s*정류장""")
     private val stopsOnly = Regex("""^(\d+)\s*정류장$""")
-    private val notifyStyle = Regex("""([A-Za-z]?\d{1,4}[A-Za-z]?)\s*\(([^)]+)\)""")
+    private val notifyStyle = Regex("""([A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?)\s*\(([^)]+)\)""")
     private val occupancyLabel = Regex("""^(여유|보통|혼잡|매우\s*혼잡)$""")
 
     fun parse(

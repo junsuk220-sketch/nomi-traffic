@@ -24,7 +24,7 @@ object NaverTransferAccessibilityParser {
     private val alightStop = Regex("""^(?!빠른 하차|빠른 환승).+하차$""")
     private val busBoard = Regex("""^(?!.*호선).*승차$""")
     private val directionPattern = Regex("""^.+방면$""")
-    private val busLine = Regex("""^\d{1,4}$""")
+    private val busLine = Regex("""^[A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?$""")
     private val occupancyLabel = Regex("""^(여유|보통|혼잡|매우\s*혼잡)$""")
     private val minutesOnly = Regex("""^(\d+)\s*분$""")
     private val minutesAndStops = Regex("""^(\d+)\s*분\s*(\d+)\s*정류장""")

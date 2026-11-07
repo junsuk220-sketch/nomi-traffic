@@ -78,6 +78,9 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
             recordGoogleNotification(sbn)
             try {
                 if (sbn.isOngoing) {
+                    if (GoogleGuidanceRemoved.onPosted()) {
+                        Log.i(GoogleMapsTransit.TAG, "[GOOGLE_TRIP] guidance card re-posted, guidance continues")
+                    }
                     val extras = sbn.notification.extras
                     GoogleFeed.onPosted(
                         extraText(extras, Notification.EXTRA_TITLE),
@@ -126,7 +129,18 @@ class NaverNavigationNotificationListenerService : NotificationListenerService()
             } catch (_: Throwable) {
             }
             try {
-                if (sbn.isOngoing) GoogleFeed.onEnded()
+                if (sbn.isOngoing) {
+                    // Do not end on the remove itself: Google rebuilds the card.
+                    // Field 2026-11-01 ride reset then spoke again in 4 ms.
+                    GoogleGuidanceRemoved.hold(System.currentTimeMillis()) {
+                        GoogleFeed.onEnded()
+                        Log.i(GoogleMapsTransit.TAG, "[GOOGLE_TRIP] guidance card removed, guidance ended")
+                    }
+                    mainHandler.postDelayed(
+                        { GoogleGuidanceRemoved.expire(System.currentTimeMillis()) },
+                        GoogleGuidanceRemoved.REPOST_GRACE_MS + 100L,
+                    )
+                }
             } catch (_: Throwable) {
             }
             return

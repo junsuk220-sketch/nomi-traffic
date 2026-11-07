@@ -104,8 +104,16 @@ object GoogleStartBrief {
         )
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun onStep(step: GoogleStep): String? = null
+    /**
+     * Never speaks. Guidance that opens already riding (Ride / Alight first) has
+     * nothing to board, so the brief must not follow the ride count
+     * (2026-11-02 16:38: ride count first, then a wrong "65번 64분").
+     */
+    @Synchronized
+    fun onStep(step: GoogleStep): String? {
+        if (step is GoogleStep.Ride || step is GoogleStep.Alight) spoken = true
+        return null
+    }
 
     @Synchronized
     fun reset() {
@@ -114,20 +122,25 @@ object GoogleStartBrief {
         remembered = null
     }
 
-    /** The first "기타:" after the first "에 출발" clock; a far clock like 오전 6:03 is dropped. */
+    /**
+     * The later of the card clock and its "기타:" at the first stop. Google sometimes
+     * puts the sooner realtime under "기타:" (2026-11-02 707: 4:14 card / 4:12 기타);
+     * the spoken first uses the sooner, so the other clock is the next bus.
+     */
     private fun nextMinutes(blobs: List<String>, nowMillis: Long, first: Int?): Int? {
         val start = blobs.indexOfFirst { clock.containsMatchIn(it) && it.contains("에 출발") }
         if (start < 0) return null
+        val primary = clockMinutes(blobs[start], nowMillis)
         val extra = blobs.drop(start + 1)
             .takeWhile { !it.contains("에 출발") }
             .firstOrNull { it.trim().startsWith("기타:") }
-            ?: return null
-        val minutes = minuteAfter.find(extra)?.groupValues?.get(1)?.toIntOrNull()
-            ?: clockMinutes(extra, nowMillis)
-            ?: return null
-        if (minutes < 1 || minutes > 60) return null
-        if (first != null && minutes <= first) return null
-        return minutes
+        val other = extra?.let {
+            minuteAfter.find(it)?.groupValues?.get(1)?.toIntOrNull() ?: clockMinutes(it, nowMillis)
+        }
+        return listOfNotNull(primary, other)
+            .filter { it in 1..60 }
+            .filter { first == null || it > first }
+            .minOrNull()
     }
 
     private fun clockMinutes(blob: String, nowMillis: Long): Int? {

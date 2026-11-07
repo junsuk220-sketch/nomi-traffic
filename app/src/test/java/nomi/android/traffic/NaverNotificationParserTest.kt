@@ -61,6 +61,29 @@ class NaverNotificationParserTest {
         )
     }
 
+    /** Field 2026-10-30: `70-3 (곧 도착)` was spoken as `3번` because the regex stopped at the hyphen. */
+    @Test
+    fun `302 hyphenated bus line keeps 70-3 not just 3`() {
+        val event = NaverNotificationParser.parse(
+            NaverNotificationParser.Snapshot(
+                packageName = "com.nhn.android.nmap",
+                notificationId = 301,
+                channel = "302_PUBTRANS_POPUP",
+                title = "당산역11번출구까지 걷기",
+                text = "70-3 (곧 도착), 70-3 (9분)",
+                timestampMillis = System.currentTimeMillis(),
+            ),
+        )!!
+        assertEquals("70-3", event.busInfo!!.arrivals[0].line)
+        assertEquals("곧 도착", event.busInfo!!.arrivals[0].eta)
+        assertEquals("70-3", event.busInfo!!.arrivals[1].line)
+        assertEquals("9분", event.busInfo!!.arrivals[1].eta)
+        assertEquals(
+            "70-3번, 70-3번 버스, 곧 도착합니다. 다음은 70-3번, 9분 후 도착입니다.",
+            NavigationEventSpeech.line(event),
+        )
+    }
+
     @Test
     fun `302 bus board next is remaining soonest after first`() {
         val event = NaverNotificationParser.parse(

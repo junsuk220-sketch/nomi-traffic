@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -14,8 +14,8 @@ android {
         applicationId = "nomi.traffic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 182
-        versionName = "1.0.1-next-train"
+        versionCode = 186
+        versionName = "1.0.1-google-hold"
         buildConfigField("String", "SEOUL_SUBWAY_API_KEY", quote(seoulSubwayApiKey()))
     }
 

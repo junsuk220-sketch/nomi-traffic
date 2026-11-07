@@ -373,31 +373,52 @@ object GoogleTransitAccessibilityParser {
         if (etaSoonPattern.containsMatchIn(text)) return true
         return etaSoonLoosePattern.containsMatchIn(text)
     }
-    /** Primary card clock like `오후 8:46`. Ignore schedule labels, ranges, and `기타:` alternatives. */
+    /**
+     * Primary card clock "오후 8:46에 출발". A bare clock without "에 출발" is not used:
+     * on a collapsed route screen it is the trip's arrival time (2026-11-02: "65번 64분").
+     * When that bus already left ("출발함"), the first "기타:" departure after it is the
+     * next one to catch.
+     */
     private fun clockEtaMinutes(blobs: List<String>, nowMillis: Long): Int? {
         if (nowMillis <= 0L) return null
-        val blob = blobs.firstOrNull { isPrimaryDepartureClock(it) && it.contains("에 출발") }
-            ?: blobs.firstOrNull { isPrimaryDepartureClock(it) }
-            ?: return null
+        val now = if (nowMillis >= 1_600_000_000_000L) nowMillis else System.currentTimeMillis()
+        val at = blobs.indexOfFirst { isPrimaryDepartureClock(it) && it.contains("에 출발") }
+        if (at < 0) return null
+        val otherBlob = blobs.drop(at + 1)
+            .takeWhile { !it.contains("에 출발") }
+            .firstOrNull { it.trim().startsWith("기타:") && clockPattern.containsMatchIn(it) }
+        val primary = clockDelta(blobs[at], now) ?: return null
+        val other = otherBlob?.let { clockDelta(it, now) }
+        if (primary >= 0) {
+            // Google often puts a sooner realtime under "기타:" than the card clock
+            // (2026-11-02 707: "오후 4:14에 출발" / "기타: 오후 4:12"). Prefer the sooner.
+            val soonest = listOfNotNull(primary.takeIf { it <= 120 }, other?.takeIf { it in 0..120 }).minOrNull()
+            return soonest
+        }
+        // The first bus left. Only trust "기타:" when Google says it left.
+        if (blobs.subList(0, at).none { it.trim() == "출발함" }) return null
+        return other?.takeIf { it in 0..120 }
+    }
+
+    /** Minutes from [now] to the clock in [blob], rounded up; -1 when it already passed. */
+    private fun clockDelta(blob: String, now: Long): Int? {
         val match = clockPattern.find(blob) ?: return null
         val hour12 = match.groupValues[1].toIntOrNull() ?: return null
         val minute = match.groupValues[2].toIntOrNull() ?: return null
-        val afternoon = blob.contains("오후")
         var hour24 = hour12 % 12
-        if (afternoon) hour24 += 12
-        val now = if (nowMillis >= 1_600_000_000_000L) nowMillis else System.currentTimeMillis()
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
-        val target = cal.clone() as java.util.Calendar
-        target.set(java.util.Calendar.HOUR_OF_DAY, hour24)
-        target.set(java.util.Calendar.MINUTE, minute)
-        target.set(java.util.Calendar.SECOND, 0)
-        target.set(java.util.Calendar.MILLISECOND, 0)
-        if (target.timeInMillis + 30_000L < now) {
-            target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        if (blob.contains("오후")) hour24 += 12
+        val target = java.util.Calendar.getInstance().apply {
+            timeInMillis = now
+            set(java.util.Calendar.HOUR_OF_DAY, hour24)
+            set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
         }
-        val deltaMin = ((target.timeInMillis - now + 59_999L) / 60_000L).toInt()
-        if (deltaMin < 0 || deltaMin > 120) return null
-        return deltaMin
+        // Past midnight: 23:55 then "오전 12:05" is tomorrow, not 23 hours ago.
+        if (target.timeInMillis - now < -12 * 3_600_000L) target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        val diff = target.timeInMillis - now
+        if (diff + 30_000L < 0) return -1
+        return ((diff + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
     }
 
     private fun isPrimaryDepartureClock(blob: String): Boolean {

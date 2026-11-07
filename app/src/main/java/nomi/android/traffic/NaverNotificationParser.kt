@@ -27,8 +27,9 @@ object NaverNotificationParser {
     )
 
     private val distancePattern = Regex("""(\d+)\s*m""", RegexOption.IGNORE_CASE)
+    /** Same line shape as Event-First BUS_ROW — keep `70-3`, not just `3`. */
     private val busArrivalPattern =
-        Regex("""([A-Za-z]?\d{1,4}[A-Za-z]?)\s*\(([^)]+)\)""")
+        Regex("""([A-Za-z]?\d{1,4}(?:-\d+)?[A-Za-z]?)\s*\(([^)]+)\)""")
     private val boardingStopPattern =
         Regex("""^(.+?)\s*(?:까지\s*걷기|도보\s*후\s*(?:버스|지하철)\s*승차|에서\s*승차)$""")
 

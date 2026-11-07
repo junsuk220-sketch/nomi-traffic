@@ -26,10 +26,9 @@ object GoogleRide {
             is GoogleStep.Alight -> {
                 target = step.stop; left = step.stopsLeft; unit = step.unit; minutes = step.minutes
             }
-            else -> {
-                stop = null
-                return null
-            }
+            // Google flips Ride / Board / Wait on one trip; a flip is not a new leg.
+            // The target stop changes on a real next leg, and reset() ends the trip.
+            else -> return null
         }
         if (stop != target) {
             stop = target

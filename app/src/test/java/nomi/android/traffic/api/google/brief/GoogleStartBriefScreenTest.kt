@@ -220,6 +220,77 @@ class GoogleStartBriefScreenTest {
         )
     }
 
+    private fun screen(vararg blobs: String) = Node(children = blobs.map { Node(text = it) })
+
+    /** 2026-11-02 16:38:01. Collapsed route card: only the summary and the arrival clock. */
+    private val collapsed = screen(
+        "도보 5분후 버스, \u200b65 또는 7727후 버스, \u200b6011후 도보 5분",
+        "도보 5분", "\u200b\u200b65\u200b 또는 \u200b7727\u200b", "버스, \u200b65 또는 7727",
+        "\u200b\u200b6011\u200b", "버스, \u200b6011", "도보 5분", "닫기",
+        "이 이동의 경로 한눈에 보기 시작", "시작", "경로 저장", "1시간 15분", "오후 5:42",
+    )
+
+    /** 2026-11-02 16:38:09. 7727 left at 오후 4:35 ("출발함"); the next one is 오후 4:44. */
+    private val departed = screen(
+        "도보 5분후 버스, \u200b65 또는 7727후 버스, \u200b6011후 도보 5분",
+        "도보 5분", "\u200b\u200b65\u200b 또는 \u200b7727\u200b", "버스, \u200b65 또는 7727",
+        "닫기", "내 위치", "오후 4:28", "도보 약 5분", "일산동부경찰서(중)",
+        "\u200b\u200b7727\u200b", "\u200b7727", "신촌", "출발함", "오후\n4:35", "오후 4:35에 출발",
+        "출발편 더보기", "기타: 오후 4:44(실시간)", "정류장 25개(46분) 이동",
+        "연희104고지앞.구성산회관. 오후 5:21", "환승", "\u200b\u200b6011\u200b", "월계동대우아파트",
+        "예정됨", "오후\n5:28", "오후 5:28에 출발", "기타: 오후 5:02(일정보다 이름)",
+        "이 이동의 경로 한눈에 보기 시작", "시작", "1시간 15분", "오후 5:42",
+    )
+
+    /**
+     * 2026-11-02 16:06. Card clock 오후 4:14, 기타 오후 4:12(실시간). The spoken first
+     * must be the sooner (기타); the card clock is the next bus. Without this the brief
+     * said only "8분 … 걸어서 6분" and dropped "다음 버스".
+     */
+    @Test
+    fun `sooner 기타 is the first bus and the card clock is next`() {
+        val route = screen(
+            "도보 6분후 버스, \u200b65, 89, 707, 2000 또는 7727후 지하철, \u200bGTX-A후 버스, \u200b100, 150 또는 162",
+            "도보 6분", "도보 약 6분", "일산동부경찰서(중)",
+            "\u200b\u200b707\u200b", "\u200b707", "두신마을", "실시간",
+            "오후\n4:14", "오후 4:14에 출발",
+            "출발편 더보기", "기타: 오후 4:12(실시간)",
+            "정류장 5개(14분) 이동",
+            "이 이동의 경로 한눈에 보기 시작", "시작", "53분", "오후 4:49",
+        )
+        assertNull(GoogleStartBrief.onScreen(route, live = false, nowMillis = at(16, 6)))
+        assertEquals(
+            "707번, 707번 버스가 6분 후 도착합니다. 정류장까지는 걸어서 약 6분입니다. 다음 버스는 8분 후입니다.",
+            GoogleStartBrief.onScreen(quiet, live = true, nowMillis = at(16, 6)),
+        )
+    }
+
+    @Test
+    fun `collapsed card never speaks its arrival clock as a bus time`() {
+        val now = at(16, 38, 1)
+        assertNull(GoogleStartBrief.onScreen(collapsed, live = false, nowMillis = now))
+        assertNull(GoogleStartBrief.onScreen(quiet, live = true, nowMillis = now + 11_000L))
+    }
+
+    @Test
+    fun `collapsed card after a good one does not replace it`() {
+        assertNull(GoogleStartBrief.onScreen(departed, live = false, nowMillis = at(16, 38, 0)))
+        assertNull(GoogleStartBrief.onScreen(collapsed, live = false, nowMillis = at(16, 38, 1)))
+        assertEquals(
+            "7727번, 7727번 버스가 6분 후 도착합니다. 정류장까지는 걸어서 약 5분입니다.",
+            GoogleStartBrief.onScreen(quiet, live = true, nowMillis = at(16, 38, 12)),
+        )
+    }
+
+    @Test
+    fun `guidance that opens already riding stays silent`() {
+        assertNull(GoogleStartBrief.onScreen(departed, live = false, nowMillis = at(16, 38, 0)))
+        GoogleStartBrief.onStep(
+            nomi.android.traffic.api.google.read.GoogleStep.Ride("연희동", 22, "정류장", 44, "오후 5:42"),
+        )
+        assertNull(GoogleStartBrief.onScreen(quiet, live = true, nowMillis = at(16, 38, 12)))
+    }
+
     @Test
     fun `next clock far away is dropped`() {
         val late = Node(
